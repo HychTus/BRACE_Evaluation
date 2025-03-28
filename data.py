@@ -43,7 +43,6 @@ class BRACE_Dataset(data.Dataset):
                             'answer': answer,
                             'references': references
                         })
-            
         elif self.meta_type == 'comparison':
             raise NotImplementedError
         else:

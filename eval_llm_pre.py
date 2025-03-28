@@ -12,21 +12,80 @@ from datetime import datetime
 from sklearn.metrics import f1_score
 
 from .data import BRACE_Dataset
-from .infer import single_inference
+from .infer import inference_single
+from .process import main as process_main
 
-def parse_args(args):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--meta_path', type=str, required=True)
-    parser.add_argument('--meta_type', type=str, required=True)
-    parser.add_argument('--audio_base_path', type=str, required=True)
-    parser.add_argument('--model_name', type=str, required=True)
-    parser.add_argument('--logs', type=str, default='logs')
-    parser.add_argument('--exp_name', type=str, default=None)
-    parser.add_argument('--single_inference', action='store_true')
-    parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--ref_num', type=int, default=0)
-    args = parser.parse_args(args)
-    return args
+def parse_args():
+    # TODO: 使用 sys.argv[1:] 相比直接使用 parser 的优势？能够在代码中手动传参来模拟？
+    # NOTE: 由于多阶段调用相同的代码，使用的参数不同，导致不能设置 required=True
+    parser = argparse.ArgumentParser(description='Multistage evaluation pipeline')
+
+    # 阶段控制参数
+    parser.add_argument('--stage', type=str, default='all',
+                        choices=['all', 'inference', 'process', 'metric'],
+                        help='Pipeline stages to execute: all|inference|process|metric')
+    parser.add_argument('--exp_name', type=str, required=True,
+                        help='Experiment name for tracking')
+    parser.add_argument('--logs_dir', type=str, default='logs',
+                        help='Root directory for experiment logs')
+    
+    # Inference 阶段参数
+    parser.add_argument('--meta_path', type=str, help='Path to metadata file')
+    parser.add_argument('--meta_type', type=str, help='Metadata format type')
+    parser.add_argument('--audio_base_dir', type=str, 
+                        help='Base directory for audio files')
+    parser.add_argument('--model', type=str, 
+                        help='Model name for inference')
+    parser.add_argument('--ref_num', type=int, default=0,
+                        help='Number of reference samples')
+    
+    # Debug 参数
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable debug mode')
+    return parser.parse_args()
+
+
+def init_logging(log_dir: str, debug: bool = False) -> None:
+    """配置日志系统"""
+    log_level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(Path(log_dir)/'pipeline.log'),
+            logging.StreamHandler()
+        ]
+    )
+
+
+def setup_experiment(logs_dir, args):
+    if args.stage == 'all' or args.stage == 'inference':
+        # 此时才会设置 dataset_name 和 task_name
+        args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
+        args.task_name = f'{args.dataset_name}_{args.model_name}'
+    else:
+        # 后续阶段时需要保证 exp_name 不为空
+        assert args.exp_name is not None
+
+    # NOTE: 注意后续的处理可能只有 result file，没有其他信息
+    # 由于要输出 log file，所以最好还是
+    
+    
+    if args.exp_name is None:
+        date_str = datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+        args.exp_name = '-'.join([
+            f'task_{args.task_name}',
+            date_str,
+        ])
+
+    args.logs_dir = os.path.join(logs_dir, args.exp_name)
+    os.makedirs(log_base_path, exist_ok=True)
+
+    # 保存实验配置
+    config_path = Path(log_dir) / 'config.json'
+    if not config_path.exists():
+        with open(config_path, 'w') as f:
+            json.dump(vars(args), f, indent=4)
 
 
 def generate_prompt(item, ref_num=0):
@@ -51,22 +110,11 @@ def generate_prompt(item, ref_num=0):
     )
 
 
-def output_to_prediction(output):
-    # 逐个字符判断是否为数字，如果输出的数字只有 0 或 1，则认为是有效输出
-    # TODO: 如何进行更加完善的解析？使用 LLM？
-    digits = set(c for c in output if c.isdigit())
-    if digits == {'0'}:
-        return 0
-    elif digits == {'1'}:
-        return 1
-    else:
-        return None
-
-
-def calc_metrics(result, args):
+def calc_metrics(result):
+    # 这部分代码必须要分离出来，可能只执行后面的部分
     error_output = 0
     predictions, answers = [], []
-    logging.info(f'Calculate metrics on {args.task_name}')
+    logging.info(f'Calculate metrics')
     for item in result:
         prediction = item['prediction']
 
@@ -103,9 +151,9 @@ def main(args):
     os.makedirs(log_base_path, exist_ok=True)
 
     # log 分别输出到文件和控制台
-    args.log_level = logging.DEBUG if args.debug else logging.INFO
+    log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(
-        level=args.log_level,
+        level=log_level,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(os.path.join(log_base_path, 'log.txt')),
@@ -133,7 +181,7 @@ def main(args):
         for item in tqdm(dataset, desc="Processing items"):
             audio_path = item['audio_path']
             prompt = generate_prompt(item, ref_num=args.ref_num)
-            output = single_inference(
+            output = inference_single(
                 audio_path=audio_path, 
                 prompt=prompt,
                 model_name=args.model_name,
@@ -150,6 +198,8 @@ def main(args):
     with open(result_path, 'w') as f:
         json.dump(result, f, indent=4)
 
+    return
+
     # NOTE: subprocess 通过参数列表来传参，实际运行的是 bash 命令，-c 后面是命令字符串
     # subprocess.run() 是 subprocess.Popen() 的一个高层封装，能够等待子进程结束
     # check=True 会在子进程返回非零状态码时抛出异常（子进程的 logging 和主进程不同步）
@@ -164,9 +214,12 @@ def main(args):
         ],
         check=True
     )
-    
-    
 
+    # process 相关的逻辑不用从 main 中分离出去，单独运行 process.py 来处理
+    with open(result_path, 'r') as f:
+        result = json.load(f)
+
+    calc_metrics(result)
     end_time = time.time()
     logging.info(f'Time cost: {end_time - start_time:.2f}s')
 

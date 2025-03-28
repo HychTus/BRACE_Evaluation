@@ -10,11 +10,11 @@ prompt_template = (
     "caption_0: {}\n"
     "caption_1: {}\n"
     "prediction: {}\n"
-    "Based on the prediction, determine which caption is better."
-    "If caption_0/the first caption is better, output '0';"
-    "If caption_1/the second caption is better, output '1';"
-    "If the prediction states that both captions are completely indistinguishable in quality, output 'tie';"
-    "If the prediction is unrelated to determining which caption is better, output 'unknown'."
+    "Based on the prediction, determine which caption is better. "
+    "If caption_0/the first caption is better, output '0'; "
+    "If caption_1/the second caption is better, output '1'; "
+    "If the prediction states that both captions are completely indistinguishable in quality, output 'tie'; "
+    "If the prediction is unrelated to determining which caption is better, output 'unknown'. "
     "You need only output '0', '1', 'tie', or 'unknown'."
 )
 
@@ -32,7 +32,12 @@ def main(args):
     with open(args.result_path, 'r') as f:
         result = json.load(f)
 
-    prompts = [prompt_template.format(item['output']) for item in result]
+    prompts = []
+    for item in result:
+        prompt = prompt_template.format(item['caption_0'], item['caption_1'], item['output'])
+        prompts.append(prompt)
+
+    prompts = prompts[:5]
     
     model_path = os.path.join(model_base_dir, args.model_name)
     llm = LLM(
@@ -49,17 +54,25 @@ def main(args):
         max_tokens=256
     )
 
-    # vllm 似乎能够自动调整 batch size 以适应 GPU 内存 TODO
+    # vllm 能够自动调整 batch size 以适应 GPU 内存，所以参数中只需要设置 GPU 利用率
+    # TODO: 如何使用 vllm，以及 vllm 背后的原理
     outputs = llm.generate(prompts, sampling_params)
+
+    for output in outputs:
+        print(output.outputs[0].text)
+    return
+
     for item, output in zip(result, outputs):
-        item['prediction'] = output
+        item['prediction'] = output.outputs[0].text
 
     processed_result_path = args.result_path.replace('.json', '_processed.json')
     with open(processed_result_path, 'w') as f:
         json.dump(result, f, ensure_ascii=False, indent=4)
 
 
-if __name__ == '__main__':
+def test_prompt():
     print(prompt_template.format('caption_0', 'caption_1', 'prediction'))
-    
-    # main(sys.argv[1:])
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

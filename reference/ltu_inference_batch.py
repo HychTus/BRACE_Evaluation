@@ -159,6 +159,8 @@ def main(
 
         for task in task_dict.keys():
             result_json = []
+            # BUG: 本质仍然是逐条进行遍历的，这个怎能叫 inference batch？
+            # batch inference 相比 single inference 是否能够提供加速？为什么？
             for i in range(len(data_json_1)):
                 cur_answer = data_json_1[i]["output"]
                 cur_audio_path = data_json_1[i]["audio_id"]
