@@ -6,23 +6,36 @@ from vllm import LLM, SamplingParams
 
 model_base_dir = '/mnt/public/data/lh/models'
 
-prompt_template = (
-    "caption_0: {}\n"
-    "caption_1: {}\n"
-    "prediction: {}\n"
-    "Based on the prediction, determine which caption is better. "
-    "If caption_0/the first caption is better, output '0'; "
-    "If caption_1/the second caption is better, output '1'; "
-    "If the prediction states that both captions are completely indistinguishable in quality, output 'tie'; "
-    "If the prediction is unrelated to determining which caption is better, output 'unknown'. "
-    "You need only output '0', '1', 'tie', or 'unknown'."
-)
+# prompt_template = (
+#     "caption_0: {}\n"
+#     "caption_1: {}\n"
+#     "prediction: {}\n"
+#     "Based on the prediction, determine which caption is better. "
+#     "If caption_0/the first caption is better, output '0'; "
+#     "If caption_1/the second caption is better, output '1'; "
+#     "If the prediction states that both captions are completely indistinguishable in quality, output 'tie'; "
+#     "If the prediction is unrelated to determining which caption is better, output 'unknown'. "
+#     "You need only output a single word of '0', '1', 'tie', or 'unknown'. "
+#     "Do not add any other text or explanation. "
+# )
+
+prompt_template = """
+prediction: {}  
+Based on the prediction, determine which caption is better.  
+Output exactly one of the following:  
+- '0' if caption_0(the first caption) is better  
+- '1' if caption_1(the second caption) is better  
+- 'tie' if both captions are indistinguishable in quality  
+- 'unknown' if the prediction is unrelated to determining which caption is better
+
+Output only the chosen word, with no additional text or explanation.  
+"""
 
 
 def parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument('--result_path', type=str, required=True)
-    parser.add_argument('--model_name', type=str, default='Qwen2.5-7B-Instruct')
+    parser.add_argument('--model_name', type=str, default='Qwen2.5-14B-Instruct')
     args = parser.parse_args(args)
     return args
     
@@ -34,8 +47,10 @@ def main(args):
 
     prompts = []
     for item in result:
-        prompt = prompt_template.format(item['caption_0'], item['caption_1'], item['output'])
+        # prompt = prompt_template.format(item['caption_0'], item['caption_1'], item['output'])
+        prompt = prompt_template.format(item['output'])
         prompts.append(prompt)
+        print(prompt)
 
     prompts = prompts[:5]
     
@@ -49,17 +64,23 @@ def main(args):
     
     # LLM generate sampling params
     sampling_params = SamplingParams(
-        temperature=0.8,
-        top_p=0.9,
-        max_tokens=256
+        temperature=0.5,
+        top_p=0.5,
+        max_tokens=5
     )
 
     # vllm 能够自动调整 batch size 以适应 GPU 内存，所以参数中只需要设置 GPU 利用率
     # TODO: 如何使用 vllm，以及 vllm 背后的原理
     outputs = llm.generate(prompts, sampling_params)
 
-    for output in outputs:
+    for item, output in zip(result, outputs):
+        print('------------------')
+        print(item['caption_0'], item['caption_1'])
+        print('------------------')
+        print(item['output'])
+        print('------------------')
         print(output.outputs[0].text)
+        
     return
 
     for item, output in zip(result, outputs):

@@ -28,17 +28,17 @@ set_cuda() {
 }
 
 EXP_NAME=''
-MODEL_NAME='LTU'
+MODEL_NAME='GAMA'
 DATA_NAME='Clotho'
-DATA_VERSION='v2'
-DATA_TYPE='Hallu'
+DATA_VERSION='v0'
+DATA_TYPE='Main'
 # /mnt/public/data/lh/chy/evaluation/metadata/AudioCaps_Hallu_v2.json
 
 # 为什么需要重新定义函数才能生效？使用的不同的 bash 进行运行？
 # 直接运行的话使用的是 sh 而不是 bash，所以先前的配置不生效（但是开头应该限制了解析的方式？）
 # bash 运行的话似乎就打开了新的终端，所以配置也会失效
 # export CUDA_VISIBLE_DEVICES='3'
-set_cuda '3' # 注意编号是从 0~3
+set_cuda '1' # 注意编号是从 0~3
 activate "$MODEL_NAME"
 
 python -m evaluation.eval_llm_pre \
