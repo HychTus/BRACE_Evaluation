@@ -4,10 +4,10 @@ import logging
 import torch.utils.data as data
 
 class BRACE_Dataset(data.Dataset):
-    def __init__(self, meta_path, meta_type, audio_base_path, processed=False):
+    def __init__(self, meta_path, meta_type, audio_base_dir, processed=False):
         self.meta_path = meta_path
         self.meta_type = meta_type
-        self.audio_base_path = audio_base_path
+        self.audio_base_path = audio_base_dir
         
         self.data = []
         with open(meta_path, 'r', encoding='utf8') as f:
@@ -17,9 +17,9 @@ class BRACE_Dataset(data.Dataset):
             self.data = self.json_data
             return
         
-        if self.meta_type == 'hallucination':
+        if self.meta_type == 'Hallu':
             for audio_item in self.json_data:
-                audio_path = os.path.join(audio_base_path, audio_item['file_name'])
+                audio_path = os.path.join(audio_base_dir, audio_item['file_name'])
                 if not os.path.exists(audio_path):
                     logging.error(f"Audio file not found: {audio_path}")
                     continue
@@ -43,7 +43,7 @@ class BRACE_Dataset(data.Dataset):
                             'answer': answer,
                             'references': references
                         })
-        elif self.meta_type == 'comparison':
+        elif self.meta_type == 'Main':
             raise NotImplementedError
         else:
             logging.error(f"Invalid BRACE Dataset type: {self.meta_type}")
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     Clotho_dataset = BRACE_Dataset(
         meta_path='/mnt/public/data/lh/chy/evaluation/metadata/Clotho_Hallu_v1.json', 
         meta_type='hallucination', 
-        audio_base_path='/mnt/public/data/lh/chy/data/Brace/Hallu/Clotho/audio'
+        audio_base_dir='/mnt/public/data/lh/chy/data/Brace/Hallu/Clotho/audio'
     )
     print(len(Clotho_dataset))
     print(Clotho_dataset[0])
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     AudioCaps_dataset = BRACE_Dataset(
         meta_path='/mnt/public/data/lh/chy/evaluation/metadata/AudioCaps_Hallu_v1.json', 
         meta_type='hallucination', 
-        audio_base_path='/mnt/public/data/lh/chy/data/Brace/Hallu/AudioCaps/audio'
+        audio_base_dir='/mnt/public/data/lh/chy/data/Brace/Hallu/AudioCaps/audio'
     )
     print(len(AudioCaps_dataset))
     print(AudioCaps_dataset[0])

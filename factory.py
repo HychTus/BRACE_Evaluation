@@ -12,7 +12,8 @@ def create_model(model_name):
         return LTU(
             base_model_path='/mnt/public/data/lh/chy/LTU/pretrained_mdls/vicuna_ltu',
             eval_mdl_path='/mnt/public/data/lh/chy/LTU/pretrained_mdls/ltu_ori_paper.bin',
-            LTU_dir='/mnt/public/data/lh/chy/LTU/src/ltu'
+            LTU_dir='/mnt/public/data/lh/chy/LTU/src/ltu',
+            use_fp16=False,
         )
     elif model_name == 'LTU-AS':
         raise NotImplementedError("LTU-AS not implemented yet!")

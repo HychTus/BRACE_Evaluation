@@ -142,17 +142,23 @@ class LTU(BaseModel):
     tokenizer = None
     prompter = None
     device = None
+    use_fp16 = None
 
-    def __init__(self, base_model_path, eval_mdl_path, LTU_dir):
+    def __init__(self, base_model_path, eval_mdl_path, LTU_dir, use_fp16=True):
         if LTU.model is None:
-            self.load_model(base_model_path, eval_mdl_path, LTU_dir)
+            self.load_model(
+                base_model_path=base_model_path,
+                eval_mdl_path=eval_mdl_path,
+                LTU_dir=LTU_dir,
+                use_fp16=use_fp16
+            )
         else:
             self.model = LTU.model
             self.tokenizer = LTU.tokenizer
             self.prompter = LTU.prompter
             self.device = LTU.device
 
-    def load_model(self, base_model_path: str, eval_mdl_path: str, LTU_dir: str):
+    def load_model(self, base_model_path: str, eval_mdl_path: str, LTU_dir: str, use_fp16: bool):
         # NOTE: 注意将 LTU 中使用的相对路径都进行替换
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.prompter = LTU_Prompter('alpaca_short', LTU_dir=LTU_dir)
@@ -163,7 +169,7 @@ class LTU(BaseModel):
             self.model = LlamaForCausalLM.from_pretrained(
                 base_model_path, 
                 device_map="auto", 
-                torch_dtype=torch.float16
+                torch_dtype=torch.float16 if use_fp16 else torch.float32,
             )
         else:
             self.model = LlamaForCausalLM.from_pretrained(base_model_path, device_map="auto")
@@ -196,6 +202,7 @@ class LTU(BaseModel):
         LTU.tokenizer = self.tokenizer
         LTU.prompter = self.prompter
         LTU.device = self.device
+        LTU.use_fp16 = use_fp16
 
     def load_audio(self, audio_path):
         waveform, sample_rate = torchaudio.load(audio_path)
@@ -244,7 +251,9 @@ class LTU(BaseModel):
             cur_audio_input, audio_info = self.load_audio(audio_path)
             cur_audio_input = cur_audio_input.unsqueeze(0)
             if self.device == "cuda":
-                cur_audio_input = cur_audio_input.half().to(self.device)
+                if self.use_fp16:
+                    cur_audio_input = cur_audio_input.half()
+                cur_audio_input = cur_audio_input.to(self.device)
 
         logging.debug(f"Audio info: {audio_info}")
 
