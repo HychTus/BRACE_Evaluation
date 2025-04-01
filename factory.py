@@ -15,7 +15,12 @@ def create_model(model_name):
             LTU_dir='/mnt/public/data/lh/chy/LTU/src/ltu',
             use_fp16=False,
         )
-    elif model_name == 'LTU-AS':
-        raise NotImplementedError("LTU-AS not implemented yet!")
+    elif model_name == 'LTU_AS':
+        return LTU_AS(
+            base_model_path='/mnt/public/data/lh/chy/LTU/pretrained_mdls/vicuna_ltuas',
+            eval_mdl_path='/mnt/public/data/lh/chy/LTU/pretrained_mdls/ltuas_long_noqa_a6.bin',
+            LTU_AS_dir='/mnt/public/data/lh/chy/LTU/src/ltu_as',
+            use_fp16=False,
+        )
     else:
         raise ValueError(f"Model {model_name} not supported!")

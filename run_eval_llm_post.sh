@@ -1,5 +1,11 @@
 #!/bin/bash
 
+MODEL_NAME='Qwen2.5-14B-Instruct'
+META_PATH='/mnt/public/data/lh/chy/evaluation/res'
+LOG_PATH='/mnt/public/data/lh/chy/evaluation/logs'
+META_NAME=$1
+
+
 activate() {
     if [ -z "$1" ]; then
         echo "Usage: activate <name>"
@@ -23,8 +29,9 @@ set_cuda() {
 }
 
 activate vllm
-set_cuda 0
+set_cuda $2
 
-python process.py \
-    --result_path '/mnt/public/data/lh/chy/evaluation/res/AudioCaps_Hallu_v1_GAMA.json' \
-    --model_name 'Qwen2.5-14B-Instruct'
+python eval_llm_post.py \
+    --meta_path "${META_PATH}/${META_NAME}.json" \
+    --model_name "${MODEL_NAME}" \
+    --log_base_dir "${LOG_PATH}" \

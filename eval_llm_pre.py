@@ -13,6 +13,7 @@ from sklearn.metrics import f1_score
 
 from .data import BRACE_Dataset
 from .infer import inference_single
+from .prompt import prompt_template_dict
 # from .process import main as process_main 导入也会出现影响
 
 
@@ -29,11 +30,35 @@ def parse_args():
     parser.add_argument('--audio_base_dir', type=str, required=True, help='Base directory for audio files')
     parser.add_argument('--model_name', type=str, required=True, help='Model name for inference')
     parser.add_argument('--ref_num', type=int, default=0, help='Number of reference samples')
+    parser.add_argument('--prompt_template_type', type=str, default='naive', help='Prompt template to use')
+
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     parser.add_argument('--single_inference', action='store_true', help='Enable single inference mode')
     parser.add_argument('--toy_dataset', action='store_true', help='Use toy dataset for testing')
 
     return parser.parse_args()
+
+
+def setup_experiment(args):
+    args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
+    args.task_name = f'{args.dataset_name}_{args.model_name}'
+    args.prompt_template = prompt_template.format(caption_0='caption_0', caption_1='caption_1')
+
+    if args.exp_name is None:
+        date_str = datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+        # task 在前便于进行查找，date_str 作为附加信息进行区分
+        args.exp_name = '-'.join([
+            f'{args.task_name}',
+            date_str,
+        ])
+    # 参数传递的是 log_base_dir，实验对应的目录为 log_dir
+    args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
+    os.makedirs(args.log_dir, exist_ok=True)
+
+    # Save experiment configuration to config.json
+    config_path = os.path.join(args.log_dir, 'config.json')
+    with open(config_path, 'w') as config_file:
+        json.dump(vars(args), config_file, indent=4)
 
 
 def init_logging(args):
@@ -49,52 +74,33 @@ def init_logging(args):
     )
 
 
-def setup_experiment(args):
-    args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
-    args.task_name = f'{args.dataset_name}_{args.model_name}'
-
-    if args.exp_name is None:
-        date_str = datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
-        # task 在前便于进行查找，date_str 作为附加信息进行区分
-        args.exp_name = '-'.join([
-            f'task_{args.task_name}',
-            date_str,
-        ])
-    # 参数传递的是 log_base_dir，实验对应的目录为 log_dir
-    args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
-    os.makedirs(args.log_dir, exist_ok=True)
-
-    # Save experiment configuration to config.json
-    config_path = os.path.join(args.log_dir, 'config.json')
-    with open(config_path, 'w') as config_file:
-        json.dump(vars(args), config_file, indent=4)
-
-
 def generate_prompt(item, ref_num=0):
     # TODO: 暂时先不测试 ref，我记得有只使用 ref 和 caption 的 evaluation method
     if ref_num > 0:
         raise NotImplementedError
 
-    # TODO: 是否要求模型只能输出 caption_0 或者 caption_1？ 
-    prompt = (
-        "Here are two captions describing the audio content:\n"
-        "caption_0: {caption_0}\n"
-        "caption_1: {caption_1}\n"
-        "Which caption better matches the audio content?"
-        # "You only need to output caption_0 or caption_1."
-        # "You only need to output '0' or '1' to indicate which caption better matches the audio content.\n"
-        # "You don't need to output any other content."
-    )
-
-    return prompt.format(
+    # 也可以通过函数属性实现，反正不想把 args 放到函数中
+    global prompt_template
+    return prompt_template.format(
         caption_0=item['caption_0'],
         caption_1=item['caption_1'],
     )
 
 
+def test_prompt():
+    print(generate_prompt({
+        'caption_0': 'A cat is sitting on a windowsill.',
+        'caption_1': 'A dog is barking at a squirrel.'
+    }))
+
+
 def main():
     start_time = time.time()
     args = parse_args()
+
+    global prompt_template
+    prompt_template = prompt_template_dict[args.prompt_template_type]
+
     setup_experiment(args)
     init_logging(args)
     
@@ -102,6 +108,7 @@ def main():
     # NOTE: VSCode 输出路径时候可以点击查看是否存在，比较方便
     logging.info(f'Task: {args.task_name}')
     logging.info(f'Experiment name: {args.exp_name}')
+    logging.info(f'Prompt template: {args.prompt_template}')
     logging.debug(f'Arguments: {args}')
 
     # create dataset
@@ -119,32 +126,43 @@ def main():
     # inference
     # TODO: 多次尝试是否有区别？对于前后顺序影响的考虑
     logging.info(f'Start inference on {args.dataset_name} with {args.model_name}')
-    result = []
-    if args.single_inference:
-        # single inference
-        for item in tqdm(dataset, desc="Processing items"):
-            audio_path = item['audio_path']
-            prompt = generate_prompt(item, ref_num=args.ref_num)
-            output = inference_single(
-                audio_path=audio_path, 
-                prompt=prompt,
-                model_name=args.model_name,
-            )
-            item['prompt'] = prompt
-            item['output'] = output
-            result.append(item)
-    else:
-        # batch inference
+    if args.single_inference == False:
         raise NotImplementedError
 
-    result_path = os.path.join(args.log_dir, 'result.json')
-    logging.info(f'Result saved to {result_path}')
+    result = []
+    save_interval = 500  # 每处理10个数据项保存一次中间结果
+    partial_result_base_dir = os.path.join(args.log_dir, 'partial_results')
+    os.makedirs(partial_result_base_dir, exist_ok=True) # 忘记 mkdir 了
+    logging.info(f'Partial results will be saved to {partial_result_base_dir}')
+
+    for idx, item in enumerate(tqdm(dataset, desc="Processing items"), start=1):
+        audio_path = item['audio_path']
+        prompt = generate_prompt(item, ref_num=args.ref_num)
+        output = inference_single(
+            audio_path=audio_path, 
+            prompt=prompt,
+            model_name=args.model_name,
+        )
+        item['prompt'] = prompt
+        item['output'] = output
+        result.append(item)
+
+        # 每达到设定的处理次数，就保存一次中间结果
+        if idx % save_interval == 0:
+            partial_result_path = os.path.join(partial_result_base_dir, f'result_partial_{idx}.json')
+            with open(partial_result_path, 'w') as f:
+                json.dump(result, f, indent=4)
+            logging.info(f'Intermediate result saved to {partial_result_path}')
+
+    result_path = os.path.join(args.log_dir, f'{args.task_name}.json')
     with open(result_path, 'w') as f:
         json.dump(result, f, indent=4)
+    logging.info(f'Final result saved to {result_path}')
 
     end_time = time.time()
     logging.info(f'Time cost: {end_time - start_time:.2f}s')
 
 
 if __name__ == '__main__':
+    # test_prompt()
     main()

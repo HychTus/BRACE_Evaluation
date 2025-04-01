@@ -25,40 +25,56 @@ from whisper.model import Whisper, ModelDimensions
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def convert_params_to_float32(model):
+    # TODO: 不知道是在干什么，为什么只将部分转换为 float32？
     for name, param in model.named_parameters():
         if "audio_encoder" in name and "ln" in name:
             if param.dtype == torch.float16:
                 print(f"Converting parameter '{name}' to float32")
                 param.data = param.data.float()
 
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
+# 通过 whisper_at package 加载 large-v2 模型（具体的定义是？）
+# BUG: 为什么这里直接指定了 cuda device？两个模型要放在不同模型上？
 whisper_text_model = whisper_at.load_model("large-v2", device='cuda:1')
 
+
 def load_whisper():
+    # 在 pretrained_mdls 中下载了 whisper large-v1，load 到 cuda:0 上
+    # TODO: LTU-AS 需要多卡来运行吗？为什么？
     mdl_size = 'large-v1'
     checkpoint_path = '../../pretrained_mdls/{:s}.pt'.format(mdl_size)
     checkpoint = torch.load(checkpoint_path, map_location='cuda:0')
+
+    # 从 checkpoint 中获取模型的维度信息，然后创建 Whisper 模型，再加载权重
+    # BUG: 但是这里使用的是 whisper 而不是 whisper_at
     dims = ModelDimensions(**checkpoint["dims"])
     whisper_feat_model = Whisper(dims)
     whisper_feat_model.load_state_dict(checkpoint["model_state_dict"], strict=False)
     whisper_feat_model.to('cuda:0')
     return whisper_feat_model
+
 whisper_feat_model = load_whisper()
 
 # do not change this, this will load llm
 base_model = "../../pretrained_mdls/vicuna_ltuas/"
 prompt_template = "alpaca_short"
 # change this to your checkpoint
-eval_mdl_path = '../../pretrained_mdls/ltuas_long_noqa_a6.bin'
-eval_mode = 'joint'
+eval_mdl_path = '../../pretrained_mdls/ltuas_long_noqa_a6.bin' # 使用的是不同的 eval_mdl_path
+eval_mode = 'joint' # 并没有被调用
 prompter = Prompter(prompt_template)
 tokenizer = LlamaTokenizer.from_pretrained(base_model)
 if device == 'cuda':
+    # config.json 中一般会记录 dtype 表示保存的模型的精度
+    # load 时指定 torch_dtype 会将模型加载为指定的精度
     model = LlamaForCausalLM.from_pretrained(base_model, device_map="auto", torch_dtype=torch.float16)
 else:
     model = LlamaForCausalLM.from_pretrained(base_model, device_map="auto")
+
+# BUG: 很迷惑，以 fp16 的方式加载模型，然后又将部分参数转换为 float32
 convert_params_to_float32(model)
 
+# 这部分配置信息和 LTU 没有区别
 config = LoraConfig(
     r=8,
     lora_alpha=16,
@@ -72,6 +88,7 @@ model = get_peft_model(model, config)
 
 temp, top_p, top_k = 0.1, 0.95, 500
 
+# BUG: load_state_dict 会有返回信息，先前使用的是 msg 来接收
 state_dict = torch.load(eval_mdl_path, map_location='cpu')
 miss, unexpect = model.load_state_dict(state_dict, strict=False)
 
@@ -92,11 +109,17 @@ if os.path.exists(log_save_path) == False:
     os.mkdir(log_save_path)
 log_save_path = log_save_path + cur_time + '.json'
 
+
 def print_parameters(model):
+    # 输出模型参数的名称、数据类型和设备
     for name, param in model.named_parameters():
         print(f"Parameter name: {name}, Data type: {param.dtype}, device '{param.device}'")
 
+
 def remove_thanks_for_watching(text):
+    # 去除输入文本中的所有形式的 thanks for watching 短语
+    # 包括大小写不同、带标点符号的变体。通过正则表达式实现
+    # BUG: text 为 whisper_text_model.transcribe 的输出，为什么需要进行去除
     variations = [
         "thanks for watching", "Thanks for watching", "THANKS FOR WATCHING",
         "thanks for watching.", "Thanks for watching.", "THANKS FOR WATCHING.",
@@ -105,14 +128,19 @@ def remove_thanks_for_watching(text):
         "thank you for watching.", "Thank you for watching.", "THANK YOU FOR WATCHING.",
         "thank you for watching!", "Thank you for watching!", "THANK YOU FOR WATCHING!"
     ]
-    variations = sorted(variations, key=len, reverse=True)
-    pattern = "|".join(re.escape(var) for var in variations)
-    result = re.sub(pattern, "", text)
+    variations = sorted(variations, key=len, reverse=True) # 优先正则匹配较长的变体
+    pattern = "|".join(re.escape(var) for var in variations) # 构建正则表达式模式
+    result = re.sub(pattern, "", text) # 根据 pattern 替换成空字符串
     return result
+
 
 text_cache = {}
 def load_audio_trans(filename):
-    global text_cache
+    # whisper_text_model (whisper-at) 进行 transcribe
+    # whisper_feat_model (whisper) 进行提取 audio_feat
+    # 通过缓存机制避免重复转录同一个文件（只是保存文本内存消耗不大）
+
+    global text_cache # 声明使用全局变量 text_cache
     if filename not in text_cache:
         result = whisper_text_model.transcribe(filename)
         text = remove_thanks_for_watching(result["text"].lstrip())
@@ -120,6 +148,8 @@ def load_audio_trans(filename):
     else:
         text = text_cache[filename]
         print('using asr cache')
+
+    # 对于 whisper 提取的 feature 进行处理 BUG: 如何进行处理的？
     _, audio_feat = whisper_feat_model.transcribe_audio(filename)
     audio_feat = audio_feat[0]
     audio_feat = torch.permute(audio_feat, (2, 0, 1)).detach().cpu().numpy()
@@ -128,12 +158,16 @@ def load_audio_trans(filename):
     audio_feat = torch.FloatTensor(audio_feat)
     return audio_feat, text
 
+
 # trim to only keep output
 def trim_string(a):
+    # 从字符串中提取出 ### Response:\n 之后的部分（感兴趣的部分）
     separator = "### Response:\n"
+    # partition() 会将字符串 a 按照分隔符分割并且返回 (before, separator, after)
     trimmed_string = a.partition(separator)[-1]
     trimmed_string = trimmed_string.strip()
     return trimmed_string
+
 
 def predict(audio_path, question):
     print('audio path, ', audio_path)
@@ -152,6 +186,8 @@ def predict(audio_path, question):
     inputs = tokenizer(prompt, return_tensors="pt")
     input_ids = inputs["input_ids"].to(device)
 
+    # temp, top_p, top_k = 0.1, 0.95, 500
+    # 额外添加了 repetition_penalty 惩罚重复的生成
     generation_config = GenerationConfig(
         do_sample=True,
         temperature=temp,
@@ -187,9 +223,10 @@ def predict(audio_path, question):
     print('eclipse time: ', end_time-begin_time, ' seconds.')
     return trim_string(output)
 
+
 audio_path = "/mnt/public/data/lh/chy/GAMA/sample_audio.wav"
 question = "Describe the audio."
-_, answer = predict(audio_path, question)
+answer = predict(audio_path, question)
 print(answer)
 
 # link = "https://github.com/YuanGongND/ltu"
