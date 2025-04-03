@@ -115,17 +115,17 @@ class BRACE_Dataset(data.Dataset):
 
 def test_Hallu():
     AudioCaps_dataset = BRACE_Dataset(
-        meta_path='/mnt/public/data/lh/chy/evaluation/metadata/AudioCaps_Hallu_v1.json', 
+        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/AudioCaps_Hallu_v1s.json', 
         meta_type='Hallu', 
-        audio_base_dir='/mnt/public/data/lh/chy/data/Brace/Hallu/AudioCaps/audio'
+        audio_base_dir='/mnt/data/lh/chy/data/Brace/Hallu/AudioCaps/audio'
     )
     print(len(AudioCaps_dataset)) # 1145
     print(AudioCaps_dataset[0])
 
     Clotho_dataset = BRACE_Dataset(
-        meta_path='/mnt/public/data/lh/chy/evaluation/metadata/Clotho_Hallu_v1.json', 
+        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/Clotho_Hallu_v1s.json', 
         meta_type='Hallu', 
-        audio_base_dir='/mnt/public/data/lh/chy/data/Brace/Hallu/Clotho/audio'
+        audio_base_dir='/mnt/data/lh/chy/data/Brace/Hallu/Clotho/audio'
     )
     print(len(Clotho_dataset)) # 1351
     print(Clotho_dataset[0])
@@ -138,17 +138,17 @@ def test_Hallu():
 
 def test_Main():
     Clotho_dataset = BRACE_Dataset(
-        meta_path='/mnt/public/data/lh/chy/evaluation/metadata/Clotho_Main_v1.json', 
+        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/Clotho_Main_v1.json', 
         meta_type='Main', 
-        audio_base_dir='/mnt/public/data/lh/chy/data/Brace/Main/Clotho/audio'
+        audio_base_dir='/mnt/data/lh/chy/data/Brace/Main/Clotho/audio'
     )
     print(len(Clotho_dataset))
     print(Clotho_dataset[0])
 
     AudioCaps_dataset = BRACE_Dataset(
-        meta_path='/mnt/public/data/lh/chy/evaluation/metadata/AudioCaps_Main_v1.json', 
+        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/AudioCaps_Main_v1.json', 
         meta_type='Main', 
-        audio_base_dir='/mnt/public/data/lh/chy/data/Brace/Main/AudioCaps/audio'
+        audio_base_dir='/mnt/data/lh/chy/data/Brace/Main/AudioCaps/audio'
     )
     print(len(AudioCaps_dataset))
     print(AudioCaps_dataset[0])
@@ -160,6 +160,6 @@ def test_Main():
 
 
 if __name__ == "__main__":
-    # test_Hallu()
-    # test_Main()
+    test_Hallu()
+    test_Main()
     pass

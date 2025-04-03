@@ -3,10 +3,6 @@ history_logs
 history_res
 __pycache__
 
-# model codebase
-LTU
-GAMA
-Audio_Flamingo
-
-# others
+LALM
 HF_Archive
+res

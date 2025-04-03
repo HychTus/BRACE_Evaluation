@@ -17,19 +17,22 @@ def inference_batch(audio_path, prompt, model_name):
 
 def test_inference_single(model_name):
     # 保留 unit test 的代码方便使用
-    # 测试单个推理
+    sample_audio_path = '/mnt/data/lh/chy/BRACE_Eval/sample_audio.wav'
+
     print(inference_single(
-        audio_path='/mnt/public/data/lh/chy/GAMA/sample_audio.wav',
+        audio_path=sample_audio_path,
         prompt='Describe the audio.',
         model_name=model_name
     ))
 
     print(inference_single(
-        audio_path='/mnt/public/data/lh/chy/GAMA/sample_audio.wav',
+        audio_path=sample_audio_path,
         prompt='What is the audio about?',
         model_name=model_name
     ))
 
 if __name__ == '__main__':
-    test_inference_single('GAMA')
+    # test_inference_single('GAMA')
     # test_inference_single('LTU')
+    # test_inference_single('AF2-1.5B')
+    pass

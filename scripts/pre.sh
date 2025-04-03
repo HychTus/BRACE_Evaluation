@@ -1,8 +1,8 @@
 #!/bin/bash
 
-LOG_PATH='/mnt/public/data/lh/chy/evaluation/logs'
-META_PATH='/mnt/public/data/lh/chy/evaluation/metadata'
-AUDIO_PATH='/mnt/public/data/lh/chy/data/Brace'
+LOG_PATH='/mnt/data/lh/chy/BRACE_Eval/logs'
+META_PATH='/mnt/data/lh/chy/BRACE_Eval/metadata'
+AUDIO_PATH='/mnt/data/lh/chy/data/Brace'
 # /mnt/public/data/lh/chy/data/Brace/Hallu/Clotho/audio
 
 activate() {
@@ -10,7 +10,7 @@ activate() {
         echo "Usage: activate <name>"
         return 1
     fi
-    local env_path="/mnt/public/data/lh/chy/envs/$1/bin/activate"
+    local env_path="/mnt/data/lh/chy/envs/$1/bin/activate"
     if [ -f "$env_path" ]; then
         source "$env_path"
     else
@@ -35,7 +35,7 @@ PROMPT=$5
 CUDA=$6
 
 # EXP_NAME='test_prompt'
-# MODEL_NAME='GAMA'
+# MODEL_NAME='AF2-3B'
 # DATA_NAME='AudioCaps'
 # DATA_TYPE='Hallu'
 # DATA_VERSION='v2s'
@@ -51,7 +51,7 @@ CUDA=$6
 set_cuda "$CUDA" # 注意编号是从 0~3
 activate "$MODEL_NAME"
 
-python -m evaluation.eval_llm_pre \
+python -m src.eval_llm_pre \
     --log_base_dir "${LOG_PATH}" \
     --meta_path "${META_PATH}/${DATA_NAME}_${DATA_TYPE}_${DATA_VERSION}.json" \
     --meta_type "$DATA_TYPE" \

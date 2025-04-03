@@ -58,6 +58,7 @@ if __name__ == '__main__':
     # NOTE: 对于 0, 1, unknown, tie 有不同的处理方式，分别进行计算
     # 还需要对于数据量进行统计，比如 tie 和 unknown 数量，总数量
     
+    # 对于一批log统一进行计算
     log_base_dir = '/mnt/public/data/lh/chy/evaluation/logs'
     Main_result, Hallu_result = [], []
 

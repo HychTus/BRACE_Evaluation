@@ -9,15 +9,31 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers import GenerationConfig
 from peft import LoraConfig, get_peft_model
 
-# 通过 as 来区分相同名的 Prompter 类，注意 LTU 的路径
-from GAMA.utils.prompter import Prompter as GAMA_Prompter
-from LTU.src.ltu.utils.prompter import Prompter as LTU_Prompter
+# GAMA
+from LALM.GAMA.utils.prompter import Prompter as GAMA_Prompter
 
-# LTU_AS
-import whisper_at
-import skimage.measure
-from whisper.model import Whisper, ModelDimensions
-from LTU.src.ltu_as.utils.prompter import Prompter as LTU_AS_Prompter
+# LTU & LTU_AS
+# TODO: 在使用 LTU 时再激活这部分依赖
+# import whisper_at
+# import skimage.measure
+# from whisper.model import Whisper, ModelDimensions
+# 通过 as 来区分相同名的 Prompter 类，注意 LTU 的路径
+from LALM.LTU.src.ltu.utils.prompter import Prompter as LTU_Prompter
+from LALM.LTU.src.ltu_as.utils.prompter import Prompter as LTU_AS_Prompter
+
+# AF2
+import os
+import json
+import yaml
+import torch
+import librosa
+import numpy as np
+import soundfile as sf
+from pydub import AudioSegment
+from safetensors.torch import load_file
+
+from LALM.AF2.inference.src.factory import create_model_and_transforms
+from LALM.AF2.inference.utils import Dict2Class, get_autocast, get_cast_dtype
 
 
 class BaseModel(ABC):
@@ -32,10 +48,15 @@ class GAMA(BaseModel):
     prompter = None
     device = None  # 将 device 也作为类属性
     
-    def __init__(self, base_model_path, eval_mdl_path, GAMA_dir):
+    def __init__(self, base_model_path, eval_mdl_path, base_dir, use_fp16=False):
         # 使用类属性检查模型和其他组件是否已加载
         if GAMA.model is None:
-            self.load_model(base_model_path, eval_mdl_path, GAMA_dir)
+            self.load_model(
+                base_model_path=base_model_path,
+                eval_mdl_path=eval_mdl_path,
+                base_dir=base_dir,
+                use_fp16=use_fp16
+            )
         else:
             # 如果模型已经加载，直接设置到实例中
             self.model = GAMA.model
@@ -43,9 +64,9 @@ class GAMA(BaseModel):
             self.prompter = GAMA.prompter
             self.device = GAMA.device
 
-    def load_model(self, base_model_path: str, eval_mdl_path: str, GAMA_dir: str):
+    def load_model(self, base_model_path, eval_mdl_path, base_dir, use_fp16):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.prompter = GAMA_Prompter('alpaca_short', GAMA_dir=GAMA_dir)
+        self.prompter = GAMA_Prompter('alpaca_short', base_dir=base_dir)
         self.tokenizer = LlamaTokenizer.from_pretrained(base_model_path)
         self.model = LlamaForCausalLM.from_pretrained(
             base_model_path, 
@@ -103,7 +124,7 @@ class GAMA(BaseModel):
         fbank = (fbank + 5.081) / 4.4849
         return fbank, audio_info
 
-    def inference_single(self, audio_path: str, prompt: str):
+    def inference_single(self, audio_path, prompt):
         prompt = self.prompter.generate_prompt(prompt, None)
         logging.debug(f"Prompt: {prompt}")
         inputs = self.tokenizer(prompt, return_tensors="pt")
@@ -153,12 +174,12 @@ class LTU(BaseModel):
     device = None
     use_fp16 = None
 
-    def __init__(self, base_model_path, eval_mdl_path, LTU_dir, use_fp16=True):
+    def __init__(self, base_model_path, eval_mdl_path, base_dir, use_fp16=False):
         if LTU.model is None:
             self.load_model(
                 base_model_path=base_model_path,
                 eval_mdl_path=eval_mdl_path,
-                LTU_dir=LTU_dir,
+                base_dir=base_dir,
                 use_fp16=use_fp16
             )
         else:
@@ -166,11 +187,12 @@ class LTU(BaseModel):
             self.tokenizer = LTU.tokenizer
             self.prompter = LTU.prompter
             self.device = LTU.device
+            self.use_fp16 = LTU.use_fp16
 
-    def load_model(self, base_model_path: str, eval_mdl_path: str, LTU_dir: str, use_fp16: bool):
+    def load_model(self, base_model_path, eval_mdl_path, base_dir, use_fp16):
         # NOTE: 注意将 LTU 中使用的相对路径都进行替换
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.prompter = LTU_Prompter('alpaca_short', LTU_dir=LTU_dir)
+        self.prompter = LTU_Prompter('alpaca_short', base_dir=base_dir)
         self.tokenizer = LlamaTokenizer.from_pretrained(base_model_path)
 
         if self.device == "cuda":
@@ -303,12 +325,12 @@ class LTU_AS(BaseModel):
     text_cache = {}
     use_fp16 = None
 
-    def __init__(self, base_model_path, eval_mdl_path, LTU_AS_dir, use_fp16=True):
+    def __init__(self, base_model_path, eval_mdl_path, base_dir, use_fp16=False):
         if LTU_AS.model is None:
             self.load_model(
                 base_model_path=base_model_path,
                 eval_mdl_path=eval_mdl_path,
-                LTU_AS_dir=LTU_AS_dir,
+                base_dir=base_dir,
                 use_fp16=use_fp16
             )
         else:
@@ -321,9 +343,9 @@ class LTU_AS(BaseModel):
             self.text_cache = LTU_AS.text_cache
             self.use_fp16 = LTU_AS.use_fp16
 
-    def load_model(self, base_model_path, eval_mdl_path, LTU_AS_dir, use_fp16=True):
+    def load_model(self, base_model_path, eval_mdl_path, base_dir, use_fp16):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.prompter = LTU_AS_Prompter("alpaca_short", LTU_AS_dir)
+        self.prompter = LTU_AS_Prompter("alpaca_short", base_dir=base_dir)
         self.tokenizer = LlamaTokenizer.from_pretrained(base_model_path)
 
         if self.device == "cuda":
@@ -468,3 +490,220 @@ class LTU_AS(BaseModel):
         output = self.trim_string(output)
         logging.debug(f"Trimmed output: {output}")
         return output
+
+
+class AF2(BaseModel):
+    model = None
+    tokenizer = None
+    device = None
+    clap_config = None
+    autocast = None
+    cast_dtype = None
+
+    def __init__(self, base_model_path, eval_mdl_path, base_dir, config_path):
+        if AF2.model is None:
+            self.load_model(
+                base_model_path=base_model_path,
+                eval_mdl_path=eval_mdl_path,
+                base_dir=base_dir,
+                config_path=config_path
+            )
+        else:
+            self.model = AF2.model
+            self.tokenizer = AF2.tokenizer
+            self.device = AF2.device
+            self.clap_config = AF2.clap_config
+            self.autocast = AF2.autocast
+            self.cast_dtype = AF2.cast_dtype
+
+    def load_model(self, base_model_path, eval_mdl_path, base_dir, config_path):
+        # 1. 加载 inference 配置文件
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+        
+        data_config = config['data_config']
+        model_config = config['model_config']
+        clap_config = config['clap_config']
+        args = Dict2Class(config['train_config'])
+
+        model_config['lang_encoder_path'] = base_model_path
+        model_config['tokenizer_path'] = base_model_path
+        clap_config['checkpoint'] = os.path.join(eval_mdl_path, 'clap_ckpt', 'epoch_15.pt')
+        self.clap_config = config['clap_config']
+
+        # 2. 加载模型和 tokenizer
+        model, tokenizer = create_model_and_transforms(
+            **model_config,
+            clap_config=clap_config, 
+            use_local_files=args.offline,
+            gradient_checkpointing=args.gradient_checkpointing,
+            freeze_lm_embeddings=args.freeze_lm_embeddings,
+        )
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = model.to(self.device)
+        model.eval()
+
+        metadata_path = os.path.join(eval_mdl_path, 'safe_ckpt', 'metadata.json')
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+        
+        state_dict = {}
+        for chunk_name in metadata:
+            chunk_path = os.path.join(eval_mdl_path, 'safe_ckpt', f'{chunk_name}.safetensors')
+            chunk_tensors = load_file(chunk_path)
+            state_dict.update(chunk_tensors)
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        self.autocast = get_autocast(args.precision, cache_enabled=(not args.fsdp))
+        self.cast_dtype = get_cast_dtype(args.precision)
+
+        self.model = model
+        self.tokenizer = tokenizer
+
+        AF2.model = self.model
+        AF2.tokenizer = self.tokenizer
+        AF2.device = self.device
+        AF2.clap_config = self.clap_config
+        AF2.autocast = self.autocast
+        AF2.cast_dtype = self.cast_dtype
+
+    @staticmethod
+    def int16_to_float32(x):
+        return (x / 32767.0).astype(np.float32)
+
+    @staticmethod
+    def float32_to_int16(x):
+        x = np.clip(x, a_min=-1., a_max=1.)
+        return (x * 32767.).astype(np.int16)
+
+    @staticmethod
+    def get_num_windows(T, sr, clap_config):
+        window_length  = int(float(clap_config["window_length"]) * sr)
+        window_overlap = int(float(clap_config["window_overlap"]) * sr)
+        max_num_window = int(clap_config["max_num_window"])
+
+        if T <= window_length:
+            num_windows = 1
+            full_length = window_length
+        elif T >= (max_num_window * window_length - (max_num_window - 1) * window_overlap):
+            num_windows = max_num_window
+            full_length = max_num_window * window_length - (max_num_window - 1) * window_overlap
+        else:
+            num_windows = 1 + int(np.ceil((T - window_length) / float(window_length - window_overlap)))
+            full_length = num_windows * window_length - (num_windows - 1) * window_overlap
+        return num_windows, full_length
+
+    @staticmethod
+    def read_audio(file_path, target_sr, duration, start, clap_config):
+        if file_path.endswith('.mp3'):
+            audio = AudioSegment.from_file(file_path)
+            if len(audio) > (start + duration) * 1000:
+                audio = audio[start * 1000:(start + duration) * 1000]
+            if audio.frame_rate != target_sr:
+                audio = audio.set_frame_rate(target_sr)
+            if audio.channels > 1:
+                audio = audio.set_channels(1)
+            data = np.array(audio.get_array_of_samples())
+            if audio.sample_width == 2:
+                data = data.astype(np.float32) / np.iinfo(np.int16).max
+            elif audio.sample_width == 4:
+                data = data.astype(np.float32) / np.iinfo(np.int32).max
+            else:
+                raise ValueError("Unsupported bit depth: {}".format(audio.sample_width))
+        else:
+            with sf.SoundFile(file_path) as audio:
+                original_sr = audio.samplerate
+                channels = audio.channels
+                max_frames = int((start + duration) * original_sr)
+                audio.seek(int(start * original_sr))
+                frames_to_read = min(max_frames, len(audio))
+                data = audio.read(frames_to_read)
+                if data.max() > 1 or data.min() < -1:
+                    data = data / max(abs(data.max()), abs(data.min()))
+            if original_sr != target_sr:
+                if channels == 1:
+                    data = librosa.resample(data.flatten(), orig_sr=original_sr, target_sr=target_sr)
+                else:
+                    data = librosa.resample(data.T, orig_sr=original_sr, target_sr=target_sr)[0]
+            else:
+                if channels != 1:
+                    data = data.T[0]
+        if data.min() >= 0:
+            data = 2 * data / abs(data.max()) - 1.0
+        else:
+            data = data / max(abs(data.max()), abs(data.min()))
+        assert len(data.shape) == 1, data.shape
+        return data
+
+    def load_audio(self, file_path, clap_config):
+        sr = 16000
+        window_length  = int(float(clap_config["window_length"]) * sr)
+        window_overlap = int(float(clap_config["window_overlap"]) * sr)
+        max_num_window = int(clap_config["max_num_window"])
+        duration = max_num_window * (clap_config["window_length"] - clap_config["window_overlap"]) + clap_config["window_overlap"]
+
+        audio_data = self.read_audio(file_path, sr, duration, 0.0, clap_config)
+        T = len(audio_data)
+        num_windows, full_length = self.get_num_windows(T, sr, clap_config)
+        if full_length > T:
+            audio_data = np.append(audio_data, np.zeros(full_length - T))
+        audio_data = audio_data.reshape(1, -1)
+        audio_data_tensor = torch.from_numpy(self.int16_to_float32(self.float32_to_int16(audio_data))).float()
+
+        audio_clips = []
+        audio_embed_mask = torch.ones(num_windows)
+        for i in range(num_windows):
+            start_idx = i * (window_length - window_overlap)
+            clip = audio_data_tensor[:, start_idx:start_idx+window_length]
+            audio_clips.append(clip)
+        if len(audio_clips) < max_num_window:
+            audio_clips = audio_clips[:max_num_window]
+            audio_embed_mask = audio_embed_mask[:max_num_window]
+        audio_clips = torch.cat(audio_clips)
+        return audio_clips, audio_embed_mask
+
+    def inference_single(self, audio_path, prompt):
+        # 处理文本 prompt
+        text_prompt = str(prompt).lower()
+        sample = f"<audio>{text_prompt.strip()}{self.tokenizer.sep_token}"
+        text_inputs = self.tokenizer(
+            sample,
+            max_length=512,
+            padding="longest",
+            truncation="only_first",
+            return_tensors="pt"
+        )
+        input_ids = text_inputs["input_ids"].to(self.device, non_blocking=True)
+
+        # 加载音频并处理
+        audio_clips, audio_embed_mask = self.load_audio(audio_path, self.clap_config)
+        audio_clips = audio_clips.to(self.device, dtype=self.cast_dtype, non_blocking=True)
+        audio_embed_mask = audio_embed_mask.to(self.device, dtype=self.cast_dtype, non_blocking=True)
+
+        # 生成输出
+        generation_kwargs = {
+            "eos_token_id": self.tokenizer.eos_token_id,
+            "max_new_tokens": 256,
+            "do_sample": False,
+            "top_k": 30,
+            "top_p": 0.95,
+            "num_return_sequences": 1,
+            "temperature": 0.0,
+        }
+        with torch.no_grad():
+            output = self.model.generate(
+                audio_x=audio_clips.unsqueeze(0),
+                audio_x_mask=audio_embed_mask.unsqueeze(0),
+                lang_x=input_ids,
+                **generation_kwargs
+            )[0]
+        
+        output_decoded = self.tokenizer.decode(output)
+        output_decoded = output_decoded.split(self.tokenizer.sep_token)[-1]
+        for token in [self.tokenizer.eos_token, self.tokenizer.pad_token, '<|endofchunk|>']:
+            output_decoded = output_decoded.replace(token, '')
+        
+        logging.debug(f"Prompt: {prompt}")
+        logging.debug(f"Audio Flamingo 2: {output_decoded}")
+        return output_decoded
