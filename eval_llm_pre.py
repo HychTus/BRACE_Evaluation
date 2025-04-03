@@ -41,7 +41,10 @@ def parse_args():
 
 def setup_experiment(args):
     args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
-    args.task_name = f'{args.dataset_name}_{args.model_name}'
+    args.task_name = f'{args.dataset_name}_{args.model_name}_{args.prompt_template_type}'
+    
+    global prompt_template
+    prompt_template = prompt_template_dict[args.prompt_template_type]
     args.prompt_template = prompt_template.format(caption_0='caption_0', caption_1='caption_1')
 
     if args.exp_name is None:
@@ -97,10 +100,6 @@ def test_prompt():
 def main():
     start_time = time.time()
     args = parse_args()
-
-    global prompt_template
-    prompt_template = prompt_template_dict[args.prompt_template_type]
-
     setup_experiment(args)
     init_logging(args)
     

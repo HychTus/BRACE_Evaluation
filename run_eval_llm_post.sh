@@ -1,9 +1,8 @@
 #!/bin/bash
 
 MODEL_NAME='Qwen2.5-14B-Instruct'
-META_PATH='/mnt/public/data/lh/chy/evaluation/res'
 LOG_PATH='/mnt/public/data/lh/chy/evaluation/logs'
-META_NAME=$1
+EXP_NAME=$1
 
 
 activate() {
@@ -31,7 +30,16 @@ set_cuda() {
 activate vllm
 set_cuda $2
 
-python eval_llm_post.py \
-    --meta_path "${META_PATH}/${META_NAME}.json" \
-    --model_name "${MODEL_NAME}" \
+# python -m evaluation.eval_llm_post \
+#     --target /mnt/public/data/lh/chy/evaluation/history_res/test_process.json \
+#     --task_type "meta" \
+#     --log_base_dir "${LOG_PATH}" \
+#     --model_name "${MODEL_NAME}" \
+#     --prompt_template_type summary_answer \
+
+python -m evaluation.eval_llm_post \
+    --target "$EXP_NAME" \
+    --task_type "pre" \
     --log_base_dir "${LOG_PATH}" \
+    --model_name "${MODEL_NAME}" \
+    --prompt_template_type summary_answer \

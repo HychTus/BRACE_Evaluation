@@ -5,54 +5,48 @@ import argparse
 
 from datetime import datetime
 from vllm import LLM, SamplingParams
-from .prompt import prompt_summary_dict
+from .prompt import prompt_template_dict
 
 model_base_dir = '/mnt/public/data/lh/models'
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_name', type=str, help='Experiment name for tracking')
-    parser.add_argument('--target', type=str, required=True, help='Target for evaluation')
-    parser.add_argument('--task_type', type=str, required=True, choices=['pre', 'meta'], help='Task type for evaluation')
-    parser.add_argument('--prompt_template_type', type=str, required=True, choices=list(prompt_summary_dict.keys()), help='Prompt template type')
-
+    # parser.add_argument('--exp_name', type=str, help='Experiment name for tracking')
     parser.add_argument('--log_base_dir', type=str, default='logs', help='Root directory for experiment logs')
+    parser.add_argument('--pre_log_dir', type=str, default='logs', help='Root directory for experiment logs')
     parser.add_argument('--model_name', type=str, default='Qwen2.5-14B-Instruct')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument('--calc_metrics', action='store_true', help='Calculate metrics after processing')
+    parser.add_argument('--prompt_template_type', type=str, default='naive', help='Prompt template to use')
     args = parser.parse_args()
     return args
 
 
 def setup_experiment(args):
     global prompt_template
-    prompt_template = prompt_summary_dict[args.prompt_template_type]
+    prompt_template = prompt_template_dict[args.prompt_template_type]
     args.prompt_template = prompt_template.format(prediction='prediction')
 
-    if args.task_type == 'pre':
-        args.exp_name = args.target
-        args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
-        assert os.path.exists(args.log_dir), f'Log directory {args.log_dir} does not exist'
+    date_str = datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+    args.exp_name = date_str
 
-        task_name = args.target.split('-')[0]
-        args.meta_path = os.path.join(args.log_dir, f'{task_name}.json')
-        assert os.path.exists(args.meta_path), f'Meta file {args.meta_path} does not exist'
+    args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
+    os.makedirs(args.log_dir, exist_ok=True)
 
-    else: # args.task_type == 'meta'
-        if args.exp_name is None:
-            date_str = datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
-            args.exp_name = f'post_{date_str}'
-        args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
-        os.makedirs(args.log_dir, exist_ok=True)
-        args.meta_path = args.target
-
-    # NOTE: 通过 basename 而不是人工的方式来获取文件名
-    meta_filename = os.path.basename(args.meta_path)
-    result_filename = f'processed_{meta_filename}'
-    args.result_path = os.path.join(args.log_dir, result_filename)
-
-    config_path = os.path.join(args.log_dir, 'post_config.json')
+    config_path = os.path.join(args.log_dir, 'config.json')
     with open(config_path, 'w') as config_file:
         json.dump(vars(args), config_file, indent=4)
+
+    origin_dir = os.path.join(args.log_dir, 'origin')
+    os.makedirs(origin_dir, exist_ok=True)
+    args.origin_dir = origin_dir
+
+    for file_name in os.listdir(args.pre_log_dir):
+        src_file = os.path.join(args.pre_log_dir, file_name)
+        dest_file = os.path.join(origin_dir, file_name)
+        if os.path.isfile(src_file):
+            with open(src_file, 'rb') as src, open(dest_file, 'wb') as dest:
+                dest.write(src.read())
 
 
 def init_logging(args):
@@ -61,10 +55,36 @@ def init_logging(args):
         level=log_level,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(os.path.join(args.log_dir, 'post_log.txt')),
+            logging.FileHandler(os.path.join(args.log_dir, 'log.txt')),
             logging.StreamHandler()
         ]
     )
+
+
+def calc_metrics(result):
+    error_output = 0
+    predictions, answers = [], []
+    for item in result:
+        prediction = item['prediction'].strip()
+
+        if prediction is None:
+            error_output += 1
+            # print(f'Error output: {item["output"]}')
+        else:
+            predictions.append(prediction)
+            answers.append(item['answer'])
+
+        if prediction == 1:
+            print(item['output'])
+
+    predictions = np.array(predictions)
+    answers = np.array(answers)
+    accuracy = np.mean(predictions == answers)
+    f1 = f1_score(answers, predictions, average='weighted')
+
+    print(f'Error output number: {error_output}')
+    print(f'Accuracy: {accuracy}')
+    print(f'F1 score: {f1}')
 
 
 def main():
@@ -72,26 +92,23 @@ def main():
     setup_experiment(args)
     init_logging(args)
 
+    logging.info(f'Task name: {args.task_name}')
     logging.info(f'Experiment name: {args.exp_name}')
     logging.info(f'Model name: {args.model_name}')
-    logging.info(f'Meta path: {args.meta_path}') # 便于查找文件
-    logging.info(f'Result path: {args.result_path}')
 
     with open(args.meta_path, 'r') as f:
         result = json.load(f)
 
     prompts = []
     for item in result:
-        # 使用 prediction 作为关键字后就不能使用位置传参数了？
-        prompt = prompt_template.format(prediction=item['output'])
-        item['post_prompt'] = prompt
+        prompt = prompt_template.format(item['output'])
         prompts.append(prompt)
 
     model_path = os.path.join(model_base_dir, args.model_name)
     llm = LLM(
         model=model_path,
         tensor_parallel_size=1,      # 根据GPU数量调整 （单卡模型并非越多越好）
-        gpu_memory_utilization=0.8,  # 设置GPU利用率
+        gpu_memory_utilization=0.9,  # 设置GPU利用率
         max_num_seqs=256,            # 设置最大并行生成数量
     )
     
@@ -117,9 +134,14 @@ def main():
     for item, output in zip(result, outputs):
         item['prediction'] = output.outputs[0].text
 
-    logging.info(f'Result saved to {args.result_path}')
-    with open(args.result_path, 'w') as f:
+    # 使用 task_name 进行存储，方便后续直接移动
+    processed_result_path = os.path.join(args.log_dir, f'{args.task_name}_processed.json')
+    logging.info(f'Result saved to {processed_result_path}')
+    with open(processed_result_path, 'w') as f:
         json.dump(result, f, indent=4)
+
+    if args.calc_metrics:
+        calc_metrics(result)
 
 
 def test_prompt():

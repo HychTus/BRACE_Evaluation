@@ -95,3 +95,29 @@ def calc_metrics(result_path):
 if __name__ == '__main__':
     result_path = '/mnt/public/data/lh/chy/evaluation/res/GAMA_AudioCaps_Hallu_v1.json'
     calc_metrics(result_path)
+
+
+def calc_metrics(result):
+    error_output = 0
+    predictions, answers = [], []
+    for item in result:
+        prediction = item['prediction'].strip()
+
+        if prediction is None:
+            error_output += 1
+            # print(f'Error output: {item["output"]}')
+        else:
+            predictions.append(prediction)
+            answers.append(item['answer'])
+
+        if prediction == 1:
+            print(item['output'])
+
+    predictions = np.array(predictions)
+    answers = np.array(answers)
+    accuracy = np.mean(predictions == answers)
+    f1 = f1_score(answers, predictions, average='weighted')
+
+    print(f'Error output number: {error_output}')
+    print(f'Accuracy: {accuracy}')
+    print(f'F1 score: {f1}')
