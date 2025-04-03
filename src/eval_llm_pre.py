@@ -40,6 +40,7 @@ def parse_args():
 
 
 def setup_experiment(args):
+    # task_name 中包含主要的几个参数
     args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
     args.task_name = f'{args.dataset_name}_{args.model_name}_{args.prompt_template_type}'
     
@@ -129,7 +130,7 @@ def main():
         raise NotImplementedError
 
     result = []
-    save_interval = 500  # 每处理10个数据项保存一次中间结果
+    save_interval = 500  # 每处理500个数据项保存一次中间结果
     partial_result_base_dir = os.path.join(args.log_dir, 'partial_results')
     os.makedirs(partial_result_base_dir, exist_ok=True) # 忘记 mkdir 了
     logging.info(f'Partial results will be saved to {partial_result_base_dir}')

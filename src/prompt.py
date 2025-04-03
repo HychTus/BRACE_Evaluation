@@ -97,7 +97,7 @@ Analyze the given answer to determine which caption it favors.
 Output exactly one of the following:
 - '0' if the answer favors caption_0 (the first caption)
 - '1' if the answer favors caption_1 (the second caption)
-- 'tie' if the answer treats both captions equally or the answer is tie
+- 'tie' if the answer treats both captions equally or the answer is 'tie'
 - 'unknown' if the answer does not provide enough information to determine a preference
 
 Output only the chosen word, with no additional text or explanation.
