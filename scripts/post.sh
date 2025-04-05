@@ -1,8 +1,8 @@
 #!/bin/bash
 
 MODEL_NAME='Qwen2.5-14B-Instruct'
-LOG_PATH='/mnt/public/data/lh/chy/evaluation/logs'
-EXP_NAME=$1
+LOG_PATH='/mnt/data/lh/chy/BRACE_Eval/logs'
+TARGET=$1
 
 
 activate() {
@@ -27,7 +27,7 @@ set_cuda() {
     export CUDA_VISIBLE_DEVICES="$1"
 }
 
-activate vllm
+# activate vllm
 set_cuda $2
 
 # python -m evaluation.eval_llm_post \
@@ -37,9 +37,8 @@ set_cuda $2
 #     --model_name "${MODEL_NAME}" \
 #     --prompt_template_type summary_answer \
 
-python -m evaluation.eval_llm_post \
-    --target "$EXP_NAME" \
-    --task_type "pre" \
+python -m src.eval_llm_post \
+    --target "$TARGET" \
     --log_base_dir "${LOG_PATH}" \
     --model_name "${MODEL_NAME}" \
     --prompt_template_type summary_answer \

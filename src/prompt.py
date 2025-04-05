@@ -16,8 +16,7 @@ Listen to the audio, and choose which caption better aligns with the audio conte
 if both captions are equally accurate or if it is impossible to determine, please output 'tie'.
 """
 
-simple_without_tie = """
-Here are two captions describing the audio content separately:
+simple_without_tie = """Here are two captions describing the audio content separately:
 caption_0: {caption_0}
 caption_1: {caption_1}
 
@@ -90,7 +89,9 @@ Output exactly one of the following:
 Output only the chosen word, with no additional text or explanation.  
 """
 
-summary_answer = """answer: {prediction}
+summary_answer = """caption_0: {caption_0}
+caption_1: {caption_1}
+answer: {answer}
 
 The above is the answer to 'Which caption is better?'.
 Analyze the given answer to determine which caption it favors.

@@ -33,13 +33,14 @@ DATA_TYPE=$3
 DATA_VERSION=$4
 PROMPT=$5
 CUDA=$6
+EXP_NAME=$7
 
 # EXP_NAME='test_prompt'
 # MODEL_NAME='AF2-3B'
 # DATA_NAME='AudioCaps'
 # DATA_TYPE='Hallu'
 # DATA_VERSION='v2s'
-# PROMPT='complex_with_tie'
+# PROMPT='simple_without_tie'
 # CUDA='1'
 
 # /mnt/public/data/lh/chy/evaluation/metadata/AudioCaps_Hallu_v2.json
@@ -59,8 +60,10 @@ python -m src.eval_llm_pre \
     --model_name "$MODEL_NAME" \
     --single_inference \
     --prompt_template_type "$PROMPT" \
+    --resume \
+    --exp_name "$EXP_NAME" \
     # --toy_dataset \
-    # --exp_name "$EXP_NAME" \
+    
     # --debug \
     
 
