@@ -1,6 +1,7 @@
 #!/bin/bash
 
-LOG_PATH='/mnt/data/lh/chy/BRACE_Eval/logs'
+export BASE_DIR="/mnt/public/data/lh/chy"
+LOG_PATH="${BASE_DIR}/BRACE_Eval/logs"
 TARGET=$1
 
 python -m src.calc_metrics \

@@ -7,7 +7,10 @@ from datetime import datetime
 from vllm import LLM, SamplingParams
 from .prompt import prompt_summary_dict
 
-model_base_dir = '/mnt/data/lh/chy/models'
+BASE_DIR = os.environ.get('BASE_DIR', '/mnt/data/lh/chy')
+model_base_dir = f'{BASE_DIR}/models'
+
+print(model_base_dir)
 
 def parse_args():
     parser = argparse.ArgumentParser()

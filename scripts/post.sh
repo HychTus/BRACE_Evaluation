@@ -1,7 +1,10 @@
 #!/bin/bash
 
-MODEL_NAME='Qwen2.5-14B-Instruct'
-LOG_PATH='/mnt/data/lh/chy/BRACE_Eval/logs'
+# export 才能生效，并且才能够通过 os.environ.get 在程序中获取到
+# 直接设置的都是临时变量，只在当前上下文中有效
+export BASE_DIR="/mnt/public/data/lh/chy"
+MODEL_NAME="Qwen2.5-14B-Instruct"
+LOG_PATH="$BASE_DIR/BRACE_Eval/logs"
 TARGET=$1
 
 
@@ -10,7 +13,7 @@ activate() {
         echo "Usage: activate <name>"
         return 1
     fi
-    local env_path="/mnt/public/data/lh/chy/envs/$1/bin/activate"
+    local env_path="$BASE_DIR/envs/$1/bin/activate"
     if [ -f "$env_path" ]; then
         source "$env_path"
     else
