@@ -3,7 +3,22 @@ import json
 import logging
 import torch.utils.data as data
 
+from .utils import BASE_DIR, META_DIR
+
 class BRACE_Dataset(data.Dataset):
+    """
+    Dataset Format:
+    {
+        'audio_path': 'path/to/audio/file',
+        'caption_0': 'caption_0',
+        'caption_1': 'caption_1',
+        'answer': 0 or 1,
+        'references': ['reference_1', 'reference_2', ...]
+        'pair_type': pair_type, (for Main type)
+        'caption_type': [type_0, type_1] (for Main type)
+    }
+    """
+
     def __init__(self, meta_path, meta_type, audio_base_dir, processed=False):
         self.meta_path = meta_path
         self.meta_type = meta_type
@@ -44,7 +59,6 @@ class BRACE_Dataset(data.Dataset):
                             'references': references
                         })
         elif self.meta_type == 'Main':
-            print("len::", len(self.json_data))
             for audio_item in self.json_data:
                 audio_path = os.path.join(audio_base_dir, audio_item['file_name'])
                 if not os.path.exists(audio_path):
@@ -111,55 +125,52 @@ class BRACE_Dataset(data.Dataset):
                 captions.extend(item['references'])
         captions = list(set(captions))
         return captions
+    
+    def print_info(self):
+        num_samples = len(self.data)
+        num_audio = len(self.get_all_audio())
+        num_captions = len(self.get_all_captions())
+        print(f"Task Name: {os.path.basename(self.meta_path)}")
+        print(f"Meta Path: {self.meta_path}")
+        print(f"Audio Base Path: {self.audio_base_path}")
+        print(f"Dataset Info: {num_samples} samples, {num_audio} unique audio files, {num_captions} unique captions")
+        print("Sample data: ")
+        print(json.dumps(self.data[0], indent=4, ensure_ascii=False))
+        print('-' * 50)
 
 
 def test_Hallu():
     AudioCaps_dataset = BRACE_Dataset(
-        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/AudioCaps_Hallu_v1s.json', 
+        meta_path=os.path.join(META_DIR, 'AudioCaps_Hallu_v2s.json'),
         meta_type='Hallu', 
-        audio_base_dir='/mnt/data/lh/chy/data/Brace/Hallu/AudioCaps/audio'
+        audio_base_dir=os.path.join(BASE_DIR, 'data/BRACE/Hallu/AudioCaps/audio')
     )
-    print(len(AudioCaps_dataset)) # 1145
-    print(AudioCaps_dataset[0])
+    AudioCaps_dataset.print_info()
 
     Clotho_dataset = BRACE_Dataset(
-        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/Clotho_Hallu_v1s.json', 
+        meta_path=os.path.join(META_DIR, 'Clotho_Hallu_v2s.json'),
         meta_type='Hallu', 
-        audio_base_dir='/mnt/data/lh/chy/data/Brace/Hallu/Clotho/audio'
+        audio_base_dir=os.path.join(BASE_DIR, 'data/BRACE/Hallu/Clotho/audio')
     )
-    print(len(Clotho_dataset)) # 1351
-    print(Clotho_dataset[0])
-
-    audios = Clotho_dataset.get_all_audio()
-    captions = Clotho_dataset.get_all_captions()
-    print(len(audios), len(captions))
-    print(audios[:5], captions[:5])
+    Clotho_dataset.print_info()
 
 
 def test_Main():
-    Clotho_dataset = BRACE_Dataset(
-        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/Clotho_Main_v1.json', 
-        meta_type='Main', 
-        audio_base_dir='/mnt/data/lh/chy/data/Brace/Main/Clotho/audio'
-    )
-    print(len(Clotho_dataset))
-    print(Clotho_dataset[0])
-
     AudioCaps_dataset = BRACE_Dataset(
-        meta_path='/mnt/data/lh/chy/BRACE_Eval/metadata/AudioCaps_Main_v1.json', 
+        meta_path=os.path.join(META_DIR, 'AudioCaps_Main_v2.json'), 
         meta_type='Main', 
-        audio_base_dir='/mnt/data/lh/chy/data/Brace/Main/AudioCaps/audio'
+        audio_base_dir=os.path.join(BASE_DIR, 'data/BRACE/Main/AudioCaps/audio')
     )
-    print(len(AudioCaps_dataset))
-    print(AudioCaps_dataset[0])
+    AudioCaps_dataset.print_info()
 
-    audios = Clotho_dataset.get_all_audio()
-    captions = Clotho_dataset.get_all_captions()
-    print(len(audios), len(captions))
-    print(audios[:5], captions[:5])
+    Clotho_dataset = BRACE_Dataset(
+        meta_path=os.path.join(META_DIR, 'Clotho_Main_v2.json'),
+        meta_type='Main', 
+        audio_base_dir=os.path.join(BASE_DIR, 'data/BRACE/Main/Clotho/audio')
+    )
+    Clotho_dataset.print_info()
 
 
 if __name__ == "__main__":
     test_Hallu()
     test_Main()
-    pass

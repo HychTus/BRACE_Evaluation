@@ -22,8 +22,10 @@ def setup_experiment(args):
     if args.exp_name is None:
         date_str = datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         args.exp_name = f'calc_{date_str}'
+
+    assert os.path.exists(args.log_base_dir), f"Log base directory {args.log_base_dir} does not exist."
     args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
-    os.makedirs(args.log_dir, exist_ok=True)
+    os.makedirs(args.log_dir, exist_ok=False)
 
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
@@ -45,7 +47,7 @@ def setup_experiment(args):
         raise ValueError(f"Target {args.target} is neither a file nor a directory")
 
     for meta_path in args.meta_paths:
-        logging.info(f'Processing file: {meta_path}')
+        logging.info(f'Target file: {meta_path}')
 
 
 def calc_metrics(result):

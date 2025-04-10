@@ -105,7 +105,7 @@ Output only the chosen word, with no additional text or explanation.
 """
 
 
-prompt_template_dict = {
+pre_prompt_template = {
     'naive': naive,
     'simple_with_tie': simple_with_tie,
     'simple_without_tie': simple_without_tie,
@@ -113,8 +113,8 @@ prompt_template_dict = {
     'complex_without_tie': complex_without_tie
 }
 
-prompt_summary_dict = {
+post_prompt_template = {
     'summary_origin': summary_origin,
     'summary_latest': summary_latest,
-    'summary_answer': summary_answer
+    'final_version': summary_answer
 }

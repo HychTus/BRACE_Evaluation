@@ -5,23 +5,21 @@ import argparse
 
 from datetime import datetime
 from vllm import LLM, SamplingParams
-from .prompt import prompt_summary_dict
+from .prompt import post_prompt_template
 
-BASE_DIR = os.environ.get('BASE_DIR', '/mnt/data/lh/chy')
-model_base_dir = f'{BASE_DIR}/models'
-
-print(model_base_dir)
+from ..utils import MODEL_DIR as model_base_dir
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Evaluate LLM post-pipeline')
     parser.add_argument('--exp_name', type=str, help='Experiment name for tracking')
     parser.add_argument('--target', type=str, required=True, help='Target for evaluation')
-    parser.add_argument('--prompt_template_type', type=str, required=True, choices=list(prompt_summary_dict.keys()), help='Prompt template type')
+    parser.add_argument('--prompt_template_type', type=str, required=True, choices=list(post_prompt_template.keys()), help='Prompt template type')
 
     parser.add_argument('--log_base_dir', type=str, default='logs', help='Root directory for experiment logs')
     parser.add_argument('--model_name', type=str, default='Qwen2.5-14B-Instruct')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     args = parser.parse_args()
+    args.model_base_dir = model_base_dir
     return args
 
 
@@ -30,8 +28,10 @@ def setup_experiment(args):
     if args.exp_name is None:
         date_str = datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         args.exp_name = f'post_{date_str}'
+
+    assert os.path.exists(args.log_base_dir), f"Log base directory {args.log_base_dir} does not exist."
     args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
-    os.makedirs(args.log_dir, exist_ok=True)
+    os.makedirs(args.log_dir, exist_ok=False)
     
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
@@ -47,7 +47,7 @@ def setup_experiment(args):
 
     # Set up the prompt template
     global prompt_template
-    prompt_template = prompt_summary_dict[args.prompt_template_type]
+    prompt_template = post_prompt_template[args.prompt_template_type]
     args.prompt_template = prompt_template.format(
         caption_0='caption_0',
         caption_1='caption_1',
@@ -86,7 +86,7 @@ def main():
     llm = LLM(
         model=model_path,
         tensor_parallel_size=1,      # 根据GPU数量调整 （单卡模型并非越多越好）
-        gpu_memory_utilization=0.9,  # 设置GPU利用率
+        gpu_memory_utilization=0.95,  # 设置GPU利用率
         max_num_seqs=256,            # 设置最大并行生成数量
     )
 
@@ -127,8 +127,34 @@ def main():
 
 
 def test_prompt():
-    print(prompt_template.format('caption_0', 'caption_1', 'prediction'))
+    prompt_template = post_prompt_template['final_version']
+    print(prompt_template.format(
+        caption_0='caption_0', 
+        caption_1='caption_1', 
+        answer='answer'
+    ))
+
+
+def test_vllm():
+    model_path = os.path.join(model_base_dir, 'Qwen2.5-14B-Instruct')
+    llm = LLM(
+        model=model_path,
+        tensor_parallel_size=1,      # 根据GPU数量调整 （单卡模型并非越多越好）
+        gpu_memory_utilization=0.95,  # 设置GPU利用率
+        max_num_seqs=256,            # 设置最大并行生成数量
+    )
+
+    sampling_params = SamplingParams(
+        temperature=0.7,
+        top_p=0.9,
+        max_tokens=256
+    )
+    prompt = 'What is the capital of France?'
+    output = llm.generate(prompt, sampling_params)
+    print(output[0].outputs[0].text)
 
 
 if __name__ == '__main__':
+    # test_prompt()
+    # test_vllm() # 似乎在 Muxi 测试的卡上用不了？
     main()

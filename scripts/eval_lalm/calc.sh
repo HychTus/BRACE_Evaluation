@@ -1,9 +1,12 @@
 #!/bin/bash
 
 export BASE_DIR="/mnt/public/data/lh/chy"
+source "${BASE_DIR}/.bashrc"
+
 LOG_PATH="${BASE_DIR}/BRACE_Eval/logs"
 TARGET=$1
+# TARGTE="" # for test
 
-python -m src.calc_metrics \
+python -m src.eval_lalm.calc \
     --target "$TARGET" \
-    --log_base_dir "${LOG_PATH}" \
+    --log_base_dir "$LOG_PATH" \

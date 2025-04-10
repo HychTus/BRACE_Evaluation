@@ -1,7 +1,8 @@
-logs
 __pycache__
 
-LALM
-HF_Archive
+envs
+logs
 res
 temp
+LALM
+CLAP
