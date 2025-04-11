@@ -11,13 +11,14 @@ AUDIO_PATH="${BASE_DIR}/data/BRACE"
 # meta data example: /mnt/public/data/lh/chy/evaluation/metadata/AudioCaps_Hallu_v2.json
 
 # ---------- Debug ----------
-# EXP_NAME='test_prompt'
+# EXP_NAME='test_pre'
 # MODEL_NAME='AF2-3B'
 # DATA_NAME='AudioCaps'
-# DATA_TYPE='Hallu'
-# DATA_VERSION='v2s'
+# DATA_TYPE='Main'
+# DATA_VERSION='v2'
 # PROMPT='simple_without_tie'
-# CUDA='1'
+# CUDA='0'
+# LOG_PATH="${BASE_DIR}/BRACE_Eval/logs/temp"
 
 # ---------- Script ----------
 MODEL_NAME=$1
@@ -32,7 +33,7 @@ CUDA=$6
 # bash 运行的话似乎就打开了新的终端，所以配置也会失效
 
 set_cuda "$CUDA"
-activate "$MODEL_NAME"
+# activate "$MODEL_NAME"
 
 python -m src.eval_lalm.pre \
     --log_base_dir "$LOG_PATH" \
@@ -42,12 +43,12 @@ python -m src.eval_lalm.pre \
     --model_name "$MODEL_NAME" \
     --single_inference \
     --prompt_template_type "$PROMPT" \
-    --resume \
 
-    # --exp_name "$EXP_NAME" \
-    # --toy_dataset \
-    # --debug \
-    
+# --exp_name "$EXP_NAME" \
+# --toy_dataset \
+# --debug \
+# --resume \
+
 # 为什么在引用 $ 变量时只能使用双引号，不能使用单引号？
 # 为什么使用 $ 时有些时候要用 ${} 而有些时候不需要？ 
 # ${} 能够界定变量名边界并且支持更复杂的功能

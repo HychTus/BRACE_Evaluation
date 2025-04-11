@@ -1,4 +1,7 @@
+import os
 import re
+import json
+import yaml
 import torch
 import logging
 import torchaudio
@@ -9,32 +12,6 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers import GenerationConfig
 from peft import LoraConfig, get_peft_model
 
-# GAMA
-from LALM.GAMA.utils.prompter import Prompter as GAMA_Prompter
-
-# LTU & LTU_AS
-# TODO: 在使用 LTU 时再激活这部分依赖
-# import whisper_at
-# import skimage.measure
-# from whisper.model import Whisper, ModelDimensions
-# 通过 as 来区分相同名的 Prompter 类，注意 LTU 的路径
-from LALM.LTU.src.ltu.utils.prompter import Prompter as LTU_Prompter
-from LALM.LTU.src.ltu_as.utils.prompter import Prompter as LTU_AS_Prompter
-
-# AF2
-import os
-import json
-import yaml
-import torch
-import librosa
-import numpy as np
-import soundfile as sf
-from pydub import AudioSegment
-from safetensors.torch import load_file
-
-from LALM.AF2.inference.src.factory import create_model_and_transforms
-from LALM.AF2.inference.utils import Dict2Class, get_autocast, get_cast_dtype
-
 
 class BaseModel(ABC):
     @abstractmethod # 必须要实现的抽象方法
@@ -43,30 +20,11 @@ class BaseModel(ABC):
 
 
 class GAMA(BaseModel):
-    model = None
-    tokenizer = None
-    prompter = None
-    device = None  # 将 device 也作为类属性
-    
     def __init__(self, base_model_path, eval_mdl_path, base_dir, use_fp16=False):
-        # 使用类属性检查模型和其他组件是否已加载
-        if GAMA.model is None:
-            self.load_model(
-                base_model_path=base_model_path,
-                eval_mdl_path=eval_mdl_path,
-                base_dir=base_dir,
-                use_fp16=use_fp16
-            )
-        else:
-            # 如果模型已经加载，直接设置到实例中
-            self.model = GAMA.model
-            self.tokenizer = GAMA.tokenizer
-            self.prompter = GAMA.prompter
-            self.device = GAMA.device
+        from LALM.GAMA.utils.prompter import Prompter
 
-    def load_model(self, base_model_path, eval_mdl_path, base_dir, use_fp16):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.prompter = GAMA_Prompter('alpaca_short', base_dir=base_dir)
+        self.prompter = Prompter('alpaca_short', base_dir=base_dir)
         self.tokenizer = LlamaTokenizer.from_pretrained(base_model_path)
         self.model = LlamaForCausalLM.from_pretrained(
             base_model_path, 
@@ -94,12 +52,6 @@ class GAMA(BaseModel):
         self.model.config.eos_token_id = 2
 
         self.model.eval()
-
-        # 保存为类属性，以确保所有实例共享相同的模型和组件
-        GAMA.model = self.model
-        GAMA.tokenizer = self.tokenizer
-        GAMA.prompter = self.prompter
-        GAMA.device = self.device
 
     def load_audio(self, filename):
         waveform, sr = torchaudio.load(filename)
@@ -168,32 +120,14 @@ class GAMA(BaseModel):
 
 
 class LTU(BaseModel):
-    model = None
-    tokenizer = None
-    prompter = None
-    device = None
-    use_fp16 = None
-
     def __init__(self, base_model_path, eval_mdl_path, base_dir, use_fp16=False):
-        if LTU.model is None:
-            self.load_model(
-                base_model_path=base_model_path,
-                eval_mdl_path=eval_mdl_path,
-                base_dir=base_dir,
-                use_fp16=use_fp16
-            )
-        else:
-            self.model = LTU.model
-            self.tokenizer = LTU.tokenizer
-            self.prompter = LTU.prompter
-            self.device = LTU.device
-            self.use_fp16 = LTU.use_fp16
+        from LALM.LTU.src.ltu.utils.prompter import Prompter
 
-    def load_model(self, base_model_path, eval_mdl_path, base_dir, use_fp16):
         # NOTE: 注意将 LTU 中使用的相对路径都进行替换
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.prompter = LTU_Prompter('alpaca_short', base_dir=base_dir)
+        self.prompter = Prompter('alpaca_short', base_dir=base_dir)
         self.tokenizer = LlamaTokenizer.from_pretrained(base_model_path)
+        self.use_fp16 = use_fp16
 
         if self.device == "cuda":
             # LTU 使用的是 float16，而 GAMA 使用的是 float32，内存占用会更小
@@ -228,12 +162,6 @@ class LTU(BaseModel):
         # self.model.to(self.device)
         # 由于在 from_pretrained 时已经设置了 device_map，所以不需要再调用 to(self.device)
         self.model.eval()
-
-        LTU.model = self.model
-        LTU.tokenizer = self.tokenizer
-        LTU.prompter = self.prompter
-        LTU.device = self.device
-        LTU.use_fp16 = use_fp16
 
     def load_audio(self, audio_path):
         waveform, sample_rate = torchaudio.load(audio_path)
@@ -316,37 +244,13 @@ class LTU(BaseModel):
     
 
 class LTU_AS(BaseModel):
-    model = None
-    tokenizer = None
-    prompter = None
-    device = None
-    whisper_text_model = None
-    whisper_feat_model = None
-    text_cache = {}
-    use_fp16 = None
-
     def __init__(self, base_model_path, eval_mdl_path, base_dir, use_fp16=False):
-        if LTU_AS.model is None:
-            self.load_model(
-                base_model_path=base_model_path,
-                eval_mdl_path=eval_mdl_path,
-                base_dir=base_dir,
-                use_fp16=use_fp16
-            )
-        else:
-            self.model = LTU_AS.model
-            self.tokenizer = LTU_AS.tokenizer
-            self.prompter = LTU_AS.prompter
-            self.device = LTU_AS.device
-            self.whisper_text_model = LTU_AS.whisper_text_model
-            self.whisper_feat_model = LTU_AS.whisper_feat_model
-            self.text_cache = LTU_AS.text_cache
-            self.use_fp16 = LTU_AS.use_fp16
+        from LALM.LTU.src.ltu_as.utils.prompter import Prompter
 
-    def load_model(self, base_model_path, eval_mdl_path, base_dir, use_fp16):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.prompter = LTU_AS_Prompter("alpaca_short", base_dir=base_dir)
+        self.prompter = Prompter("alpaca_short", base_dir=base_dir)
         self.tokenizer = LlamaTokenizer.from_pretrained(base_model_path)
+        self.use_fp16 = use_fp16
 
         if self.device == "cuda":
             self.model = LlamaForCausalLM.from_pretrained(
@@ -379,24 +283,26 @@ class LTU_AS(BaseModel):
 
         self.model.eval()
 
-        LTU_AS.model = self.model
-        LTU_AS.tokenizer = self.tokenizer
-        LTU_AS.prompter = self.prompter
-        LTU_AS.device = self.device
-        LTU_AS.whisper_text_model = self.load_whisper_text_model()
-        LTU_AS.whisper_feat_model = self.load_whisper_feat_model()
-        LTU_AS.text_cache = {}
-        LTU_AS.use_fp16 = use_fp16
+        self.whisper_text_model = self.load_whisper_text_model()
+        self.whisper_feat_model = self.load_whisper_feat_model()
+        self.text_cache = {}
+
 
     def load_whisper_text_model(self):
+        import whisper_at
+        
         # return load_model("large-v2", device="cuda:1")
         # BUG: 这里 load 到相同的模型上是否有问题？
+        # TODO: 这边模型下载的位置是哪里？是否要重新下载？
         return whisper_at.load_model("large-v2", device=self.device)
 
     def load_whisper_feat_model(self):
+        from whisper.model import Whisper, ModelDimensions
+        from ..utils import LALM_DIR
+
         # BUG: 这里使用的是绝对路径，而不是传入的路径
         mdl_size = 'large-v1'
-        checkpoint_path = f'/mnt/public/data/lh/chy/LTU/pretrained_mdls/{mdl_size}.pt'
+        checkpoint_path = f'{LALM_DIR}/LTU/pretrained_mdls/{mdl_size}.pt'
         # BUG: 这里本来的 map_location 是 'cuda:0'，改成 'cpu' 也行？
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         dims = ModelDimensions(**checkpoint["dims"])
@@ -407,6 +313,8 @@ class LTU_AS(BaseModel):
         return whisper_feat_model
 
     def load_audio_trans(self, filename):
+        import skimage.measure
+
         if filename not in self.text_cache:
             result = self.whisper_text_model.transcribe(filename)
             text = self.remove_thanks_for_watching(result["text"].lstrip())
@@ -493,31 +401,12 @@ class LTU_AS(BaseModel):
 
 
 class AF2(BaseModel):
-    model = None
-    tokenizer = None
-    device = None
-    clap_config = None
-    autocast = None
-    cast_dtype = None
-
     def __init__(self, base_model_path, eval_mdl_path, base_dir, config_path):
-        if AF2.model is None:
-            self.load_model(
-                base_model_path=base_model_path,
-                eval_mdl_path=eval_mdl_path,
-                base_dir=base_dir,
-                config_path=config_path
-            )
-        else:
-            self.model = AF2.model
-            self.tokenizer = AF2.tokenizer
-            self.device = AF2.device
-            self.clap_config = AF2.clap_config
-            self.autocast = AF2.autocast
-            self.cast_dtype = AF2.cast_dtype
-
-    def load_model(self, base_model_path, eval_mdl_path, base_dir, config_path):
-        # 1. 加载 inference 配置文件
+        from safetensors.torch import load_file
+        from LALM.AF2.inference.src.factory import create_model_and_transforms
+        from LALM.AF2.inference.utils import Dict2Class, get_autocast, get_cast_dtype
+        
+        # Load inference config
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
         
@@ -531,7 +420,7 @@ class AF2(BaseModel):
         clap_config['checkpoint'] = os.path.join(eval_mdl_path, 'clap_ckpt', 'epoch_15.pt')
         self.clap_config = config['clap_config']
 
-        # 2. 加载模型和 tokenizer
+        # Load model and tokenizer
         model, tokenizer = create_model_and_transforms(
             **model_config,
             clap_config=clap_config, 
@@ -561,13 +450,6 @@ class AF2(BaseModel):
         self.model = model
         self.tokenizer = tokenizer
 
-        AF2.model = self.model
-        AF2.tokenizer = self.tokenizer
-        AF2.device = self.device
-        AF2.clap_config = self.clap_config
-        AF2.autocast = self.autocast
-        AF2.cast_dtype = self.cast_dtype
-
     @staticmethod
     def int16_to_float32(x):
         return (x / 32767.0).astype(np.float32)
@@ -596,6 +478,10 @@ class AF2(BaseModel):
 
     @staticmethod
     def read_audio(file_path, target_sr, duration, start, clap_config):
+        import librosa
+        import soundfile as sf
+        from pydub import AudioSegment
+        
         if file_path.endswith('.mp3'):
             audio = AudioSegment.from_file(file_path)
             if len(audio) > (start + duration) * 1000:

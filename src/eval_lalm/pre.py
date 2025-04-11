@@ -124,13 +124,6 @@ def generate_prompt(item, ref_num=0):
     )
 
 
-def test_prompt():
-    print(generate_prompt({
-        'caption_0': 'A cat is sitting on a windowsill.',
-        'caption_1': 'A dog is barking at a squirrel.'
-    }))
-
-
 def get_resume_result(args):
     # TODO: 对于这部分代码的理解
     # 检查 resume 模式下是否存在部分结果
@@ -238,5 +231,4 @@ def main():
 
 
 if __name__ == '__main__':
-    test_prompt()
-    # main()
+    main()
