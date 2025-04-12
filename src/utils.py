@@ -18,3 +18,6 @@ LALM_DIR = f'{BASE_DIR}/BRACE_Eval/LALM'
 
 # Project Directory
 PROJECT_DIR = f'{BASE_DIR}/BRACE_Eval'
+
+# CLAP Directory
+CLAP_DIR = f'{BASE_DIR}/BRACE_Eval/CLAP'

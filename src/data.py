@@ -109,7 +109,7 @@ class BRACE_Dataset(data.Dataset):
         # 如果要结合 dataloader 进行 batch 操作，tuple 能够正常 collate_fn，dict 需要自定义
         return self.data[idx]
     
-    def get_all_audio(self):
+    def get_all_audios(self):
         # NOTE: 如果是 SLIDE evaluate，使用 CLAP encode 时为了加速需要去重
         # 如果是 LLM evaluate，不同的 item 之间没有关联
         audios = [item['audio_path'] for item in self.data]
@@ -128,7 +128,7 @@ class BRACE_Dataset(data.Dataset):
     
     def print_info(self):
         num_samples = len(self.data)
-        num_audio = len(self.get_all_audio())
+        num_audio = len(self.get_all_audios())
         num_captions = len(self.get_all_captions())
         print(f"Task Name: {os.path.basename(self.meta_path)}")
         print(f"Meta Path: {self.meta_path}")

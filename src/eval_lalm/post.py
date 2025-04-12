@@ -69,7 +69,7 @@ def setup_experiment(args):
     # NOTE: 通过 basename 而不是人工的方式来获取文件名
     # basename 中会包含文件的后缀名
     for meta_path in args.meta_paths:
-        logging.info(f'Processing file: {meta_path}')
+        logging.info(f'Target file: {meta_path}')
 
     # Save the configuration to a JSON file
     config_path = os.path.join(args.log_dir, 'config.json')
