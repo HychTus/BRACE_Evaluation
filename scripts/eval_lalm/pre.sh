@@ -13,11 +13,11 @@ AUDIO_PATH="${BASE_DIR}/data/BRACE"
 # ---------- Debug ----------
 # EXP_NAME='test_pre'
 # MODEL_NAME='AF2-3B'
-# DATA_NAME='AudioCaps'
-# DATA_TYPE='Main'
-# DATA_VERSION='v2'
-# PROMPT='simple_without_tie'
-# CUDA='0'
+# DATA_NAME='Clotho'
+# DATA_TYPE='Hallu'
+# DATA_VERSION='v2s'
+# PROMPT='all'
+# CUDA='1'
 # LOG_PATH="${BASE_DIR}/BRACE_Eval/logs/temp"
 
 # ---------- Script ----------
@@ -44,8 +44,8 @@ python -m src.eval_lalm.pre \
     --single_inference \
     --prompt_template_type "$PROMPT" \
 
-# --exp_name "$EXP_NAME" \
 # --toy_dataset \
+# --exp_name "$EXP_NAME" \
 # --debug \
 # --resume \
 

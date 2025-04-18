@@ -29,6 +29,7 @@ def parse_args():
 def setup_experiment(args):
     log_level = logging.DEBUG if args.debug else logging.INFO
     
+    # task_name 中仅包含 dataset_name 和 model_name
     args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
     args.task_name = f'{args.dataset_name}_{args.model_name}'
 
@@ -71,6 +72,7 @@ def main():
         audio_base_dir=args.audio_base_dir
     )
     if args.toy_dataset:
+        logging.info('Using toy dataset for testing')
         dataset = dataset[:100]
     logging.info(f'Dataset number: {len(dataset)}')
 
@@ -79,31 +81,30 @@ def main():
     model = create_model(args.model_name)
 
     logging.info(f'Start inference on {args.dataset_name} with {args.model_name}')
-
     src_captions = [item['caption_0'] for item in dataset]
     dst_captions = [item['caption_1'] for item in dataset]
     audios = [item['audio_path'] for item in dataset]
-    answers = [item['answer'] for item in dataset]
+    answers = [item['answer'] for item in dataset] # item['answer']: int
 
-    # src_score 和 dst_score 的类型是 numpy.ndarray
+    # NOTE: model.score 返回的 score 类型是 numpy.ndarray
     src_score = model.score(src_captions, audios)
     dst_score = model.score(dst_captions, audios)
-    comparison_array = np.where(src_score > dst_score, 0, 1)
+    predictions = np.where(src_score > dst_score, 0, 1)
 
     # Calculate accuracy
-    accuracy = np.mean(comparison_array == answers)
+    accuracy = np.mean(predictions == answers)
     logging.info(f'Accuracy: {accuracy * 100:.4f}')
 
     # Calculate F1-score
-    f1 = f1_score(answers, comparison_array, average='binary')
+    f1 = f1_score(answers, predictions, average='binary')
     logging.info(f'F1-score: {f1 * 100:.4f}')
 
     result = []
     for index, item in enumerate(dataset):
-        # 需要从 np.int64/np.float32 转换为 int/float 后 json 才能序列化
+        # FIXME: 需要从 np.int64/np.float32 转换为 int/float 后 json 才能序列化
         item['score_0'] = float(src_score[index])
         item['score_1'] = float(dst_score[index])
-        item['prediction'] = str(comparison_array[index])
+        item['prediction'] = str(predictions[index])
         result.append(item)
 
     result_path = os.path.join(args.log_dir, f'{args.task_name}.json')

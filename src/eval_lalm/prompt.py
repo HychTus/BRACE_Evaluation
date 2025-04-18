@@ -1,82 +1,93 @@
-naive = """Here are two captions describing the audio content:
-caption_0: {caption_0}
-caption_1: {caption_1}
-Which caption better matches the audio content?
+# Naive Prompt Templates
+naive_nontie = """You are given two independently written captions for the same audio clip.
+Caption_0: {caption_0}
+Caption_1: {caption_1}
+
+Listen to the audio and decide which caption fits the audio better.
 """
 
-# "You only need to output caption_0 or caption_1."
-# "You only need to output '0' or '1' to indicate which caption better matches the audio content.\n"
-# "You don't need to output any other content."
+naive_tie = """You are given two independently written captions for the same audio clip.
+Caption_0: {caption_0}
+Caption_1: {caption_1}
 
-simple_with_tie = """Here are two captions describing the audio content separately:
-caption_0: {caption_0}
-caption_1: {caption_1}
-
-Listen to the audio, and choose which caption better aligns with the audio content.
-if both captions are equally accurate or if it is impossible to determine, please output 'tie'.
+Listen to the audio and decide which caption fits the audio better, or if there's no clear choice.
 """
 
-simple_without_tie = """Here are two captions describing the audio content separately:
-caption_0: {caption_0}
-caption_1: {caption_1}
 
-Listen to the audio, and choose which caption better aligns with the audio content.
+# Simple Prompt Templates
+simple_nontie = """**Question**
+You are given two independently written captions for the same audio clip.
+Caption_0: {caption_0}
+Caption_1: {caption_1}
+
+Listen to the audio and determine which caption more accurately captures the entities and events in the audio, avoids hallucinating details, and is more fluent and natural. You must choose only one of the following options:
+
+**Choices**
+A. Caption_0 is better
+B. Caption_1 is better
 """
 
-complex_with_tie = """Below are two captions describing the audio content separately:
+simple_tie = """**Question**
+You are given two independently written captions for the same audio clip.
+Caption_0: {caption_0}
+Caption_1: {caption_1}
 
-caption_0: {caption_0}
-caption_1: {caption_1}
+Listen to the audio and determine which caption more accurately captures the entities and events in the audio, avoids hallucinating details, and is more fluent and natural. You must choose only one of the following options:
 
-Listen to the audio, and evaluate these captions by analyzing the following aspects:
-
-1. **Entities and Events:** Examine whether the entities mentioned and the events described align with the audio content, including the correct temporal sequence of events.
-2. **Factual Consistency:** Check each caption for any hallucinations or inaccuracies.
-3. **Quality of Caption:** Assess the overall quality in terms of fluency, grammatical correctness, and content alignment.
-
-Choose the better caption based on these criteria.
-
-Output one of the following:  
-- 'caption_0' if caption_0 is the better caption.  
-- 'caption_1' if caption_1 is the better caption.  
-- 'tie' if both are equally accurate or if it is impossible to determine.  
-
-**Your response should be a single word only.**
+**Choices**
+A. Caption_0 is better
+B. Caption_1 is better
+C. It's a tie
 """
 
-complex_without_tie = """Below are two captions describing the audio content separately:
 
-caption_0: {caption_0}
-caption_1: {caption_1}
+# Complex Prompt Templates
+complex_nontie = """**Question**
+You are given two independently written captions for the same audio clip.
+Caption_0: {caption_0}
+Caption_1: {caption_1}
 
-Listen to the audio, and evaluate these captions by analyzing the following aspects:
+Listen to the audio and determine which caption better satisfies the following criteria:
+1. **Entity Alignment:** Captions should accurately reflect the entities mentioned in the audio, including their key attributes.
+2. **Event Consistency:** Captions should correctly represent the events and interactions, preserving their temporal order and causal relationships.
+3. **Avoiding Hallucination:** Captions must provide a faithful and comprehensive account of the key entities, events, and interactions, avoiding any fabricated or incorrect details.
+4. **Linguistic Quality:** Captions should be fluent, grammatically correct, and easy to understand.
 
-1. **Entities and Events:** Examine whether the entities mentioned and the events described align with the audio content, including the correct temporal sequence of events.
-2. **Factual Consistency:** Check each caption for any hallucinations or inaccuracies.
-3. **Quality of Caption:** Assess the overall quality in terms of fluency, grammatical correctness, and content alignment.
-
-Choose the better caption based on these criteria.
-
-Output one of the following:  
-- 'caption_0' if caption_0 is the better caption.  
-- 'caption_1' if caption_1 is the better caption.  
-
-**Your response should be a single word only.**
+**You must choose only one of the following options:**
+**Choices**
+A. Caption_0 better satisfies the criteria
+B. Caption_1 better satisfies the criteria
 """
 
-summary_origin = """caption_0: {caption_0}
-caption_1: {caption_1}
-prediction: {prediction}
-Based on the prediction, determine which caption is better. 
-If caption_0/the first caption is better, output '0'; 
-If caption_1/the second caption is better, output '1'; 
-If the prediction states that both captions are completely indistinguishable in quality, output 'tie'; 
-If the prediction is unrelated to determining which caption is better, output 'unknown'. 
-You need only output a single word of '0', '1', 'tie', or 'unknown'. 
-Do not add any other text or explanation. 
+
+complex_tie = """**Question**
+You are given two independently written captions for the same audio clip.
+Caption_0: {caption_0}
+Caption_1: {caption_1}
+
+Listen to the audio and determine which caption better satisfies the following criteria:
+1. **Entity Alignment:** Captions should accurately reflect the entities mentioned in the audio, including their key attributes.
+2. **Event Consistency:** Captions should correctly represent the events and interactions, preserving their temporal order and causal relationships.
+3. **Avoiding Hallucination:** Captions must provide a faithful and comprehensive account of the key entities, events, and interactions, avoiding any fabricated or incorrect details.
+4. **Linguistic Quality:** Captions should be fluent, grammatically correct, and easy to understand.
+
+**You must choose only one of the following options:**
+**Choices**
+A. Caption_0 better satisfies the criteria
+B. Caption_1 better satisfies the criteria
+C. Tie - it is not possible to determine which caption better satisfies the criteria
 """
 
-# NOTE: 使用 """ 记录字符串时，第一行如果换行会出现 '\n'
+
+pre_prompt_template = {
+    "naive_nontie": naive_nontie,
+    "naive_tie": naive_tie,
+    "simple_nontie": simple_nontie,
+    "simple_tie": simple_tie,
+    "complex_nontie": complex_nontie,
+    "complex_tie": complex_tie,
+}
+
 
 summary_latest = """prediction: {prediction}  
 Based on the prediction, determine which caption is better.  
@@ -104,14 +115,6 @@ Output exactly one of the following:
 Output only the chosen word, with no additional text or explanation.
 """
 
-
-pre_prompt_template = {
-    'naive': naive,
-    'simple_with_tie': simple_with_tie,
-    'simple_without_tie': simple_without_tie,
-    'complex_with_tie': complex_with_tie,
-    'complex_without_tie': complex_without_tie
-}
 
 post_prompt_template = {
     'summary_origin': summary_origin,

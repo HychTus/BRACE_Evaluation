@@ -1,6 +1,3 @@
-import os
-import re
-import pickle
 import random
 import torch
 import numpy as np
@@ -15,11 +12,15 @@ class SLIDE_CLAP:
         self.hop_size = hop_size
         self.window_size = window_size
         self.batch_size = batch_size
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu' # 不考虑无 cuda
+
+        # NOTE: CLAP 必须保证记录了 duration 和 sampling_rate（在定义 CLAP 时指定了）
+        # window size 只代表裁剪的方式，不代表 CLAP 对于 audio clip 如何处理
+        assert hasattr(self.clap, 'sampling_rate'), "CLAP object must have a 'sampling_rate' attribute."
+        assert hasattr(self.clap, 'duration'), "CLAP object must have a 'duration' attribute."
 
     def read_audio(self, audio_path, resample=True):
         audio_time_series, sample_rate = torchaudio.load(audio_path)
-        
         resample_rate = self.clap.sampling_rate
         if resample and resample_rate != sample_rate:
             resampler = T.Resample(sample_rate, resample_rate)
@@ -28,14 +29,16 @@ class SLIDE_CLAP:
 
     def divide_audio(self, audio_path):
         full_audio, sample_rate = self.read_audio(audio_path, resample=True)
-        full_audio = full_audio.reshape(-1)
+        full_audio = full_audio.reshape(-1) # 双声道音频转为单声道
         audio_clips = []
 
         start_index = 0
         while True:
+            # [start_index, end_index-1]
             end_index = start_index + (int)(self.window_size*sample_rate)
             audio_clip = full_audio[start_index:end_index]
             audio_clips.append(audio_clip)
+            # slide window 中的内容刚好覆盖完全部区间，或者越界时停止
             if end_index >= full_audio.shape[0]:
                 break
             start_index += (int)(self.hop_size*sample_rate)
@@ -50,23 +53,26 @@ class SLIDE_CLAP:
             audio = audio.repeat(repeat_factor)
             audio = audio[0: duration*sample_rate]
         else:
+            # randrange 的范围为 [0, n)
             start_index = random.randrange(audio.shape[0] - duration*sample_rate)
             audio = audio[start_index:start_index + duration*sample_rate]
         tensor = torch.tensor(audio, dtype=torch.float32).reshape(-1)
         return tensor
 
     def tokenize_text(self, text):
+        # NOTE: 统计 token 数量来考虑是否要筛去对应数据
         return self.clap.tokenize_text(text)
 
-    def encode_audio(self, files):
-        origin_files = files.copy()
-        files = sorted(set(files))
-        idx_map = {file: idx for idx, file in enumerate(files)}
+    def encode_audio(self, audio_paths):
+        origin_audio_paths = audio_paths.copy()
+        audio_paths = sorted(set(audio_paths))
+        idx_map = {audio_path: idx for idx, audio_path in enumerate(audio_paths)}
 
         processed_full = []
         processed_clip = []
-        for idx, file in enumerate(files):
-            full, clips = self.divide_audio(file)
+        for idx, audio_path in enumerate(audio_paths):
+            # BUG: 这里不进行 process 问题也应该不大？得要看使用的 CLAP 那个层级的 API
+            full, clips = self.divide_audio(audio_path)
             clips = [self.preprocess_audio(clip) for clip in clips]
             # full shape/clip shape: Tensor(N,)
             processed_full.append(full)
@@ -74,7 +80,7 @@ class SLIDE_CLAP:
 
         # full: List[Tensor(N,)], clips: List[List[Tensor(N,)]]
         full_embs, _ = self.clap.get_audio_embs(processed_full, processed_clip)
-        all_embs = [full_embs[idx_map[file]].reshape(-1) for file in origin_files]
+        all_embs = [full_embs[idx_map[audio_path]].reshape(-1) for audio_path in origin_audio_paths]
         return all_embs
 
     def encode_text(self, texts):
@@ -86,28 +92,33 @@ class SLIDE_CLAP:
         all_embs = [embs[idx_map[text]].reshape(-1) for text in origin_texts]
         return all_embs
 
-
     def _calc_match_score(self, src_embs, dst_embs):
+        # CLAP encode 返回结果为 List[Tensor(D)]
+        # torch.stack 会增加一个维度，而 torch.cat 会在对应的维度上拼接（单个叠加和 batch 拼接）
         src_embs = torch.stack(src_embs, dim=0).to(self.device)
         dst_embs = torch.stack(dst_embs, dim=0).to(self.device)        
         src_embs = src_embs / torch.norm(src_embs, dim=-1, keepdim=True)
         dst_embs = dst_embs / torch.norm(dst_embs, dim=-1, keepdim=True)
+
+        # NOTE: 是向量点乘而不是矩阵乘法计算 similarity matrix
         sim = (src_embs * dst_embs).sum(dim=1)
         sim = torch.max(sim, torch.tensor(0.0).to(self.device)).cpu()
         return sim.tolist()
 
-    def _score_batch(self, captions, audios):
-        caption_embs = self.encode_text(captions)
-        audio_embs = self.encode_audio(audios)
-        results = self._calc_match_score(caption_embs, audio_embs)
-        return results
-
     def score(self, captions, audios):
+        # NOTE: 唯一生效的 batch_size 为 self.batch_size
+        # 同时对于 audio encode/text encode/calc_match_score 生效（可能会导致 GPU 被 CPU 阻塞）
+
         results = [] # list of score
-        for idx in tqdm(range(0, len(captions), self.batch_size), desc="Scoring captions with audios"):
+        for idx in tqdm(range(0, len(captions), self.batch_size), desc="SLIDE CLAP scoring captions and audios"):
             batch_captions = captions[idx: idx+self.batch_size]
             batch_audios = audios[idx: idx+self.batch_size]
-            batch_results = self._score_batch(batch_captions, batch_audios)
+
+            caption_embs = self.encode_text(batch_captions)
+            audio_embs = self.encode_audio(batch_audios)
+            
+            # _calc_match_score 返回的 batch_results 为 list
+            batch_results = self._calc_match_score(caption_embs, audio_embs)
             results.extend(batch_results)
         results = np.array(results, dtype=np.float32)
         return results

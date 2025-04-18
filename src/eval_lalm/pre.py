@@ -37,12 +37,20 @@ def parse_args():
     return parser.parse_args()
 
 
+def set_prompt_template(args):
+    ptype = args.prompt_template_type
+    if ptype == 'all':
+        args.prompt_template = pre_prompt_template
+    else:
+        assert pre_prompt_template.get(ptype) is not None, f"Prompt template {ptype} not found."
+        args.prompt_template = {ptype: pre_prompt_template[ptype]}
+
+
 def setup_experiment(args):
     # BUG: 标准的 resume 应该只使用 exp_name，并且读取其中的 config.json 恢复
     # 不确定 parser 应该如何适应这种情况，其他参数不传递会有问题
     # 所以还是要求指定基础参数，并且和 config 中进行对比确认，保证实验恢复没问题 
 
-    global prompt_template
     log_level = logging.DEBUG if args.debug else logging.INFO
     
     if args.resume:
@@ -73,16 +81,12 @@ def setup_experiment(args):
                 setattr(args, key, value)
             else:
                 assert getattr(args, key) == value, f"Argument {key} does not match saved config. Please check."
-        
-        # config 中保存的不是 format string，而是已经填充后的结果，所以要重新计算
-        prompt_template = pre_prompt_template[args.prompt_template_type]
         logging.info(f"Resuming experiment from config: {args.exp_name}")
 
     else:
         args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
         args.task_name = f'{args.dataset_name}_{args.model_name}_{args.prompt_template_type}'
-        prompt_template = pre_prompt_template[args.prompt_template_type]
-        args.prompt_template = prompt_template.format(caption_0='caption_0', caption_1='caption_1')
+        set_prompt_template(args)
 
         if args.exp_name is None:
             # 保存时 task 在前便于进行查找，date_str 作为附加信息进行区分
@@ -109,19 +113,6 @@ def setup_experiment(args):
         with open(config_path, 'w') as config_file:
             json.dump(vars(args), config_file, indent=4)
         logging.info(f"New experiment started: {args.exp_name}")
-
-
-def generate_prompt(item, ref_num=0):
-    # TODO: 暂时先不测试 ref，我记得有只使用 ref 和 caption 的 evaluation method
-    if ref_num > 0:
-        raise NotImplementedError
-
-    # 也可以通过函数属性实现，反正不想把 args 放到函数中
-    global prompt_template
-    return prompt_template.format(
-        caption_0=item['caption_0'],
-        caption_1=item['caption_1'],
-    )
 
 
 def get_resume_result(args):
@@ -166,7 +157,7 @@ def main():
     # NOTE: VSCode 输出路径时候可以点击查看是否存在，比较方便
     logging.info(f'Task: {args.task_name}')
     logging.info(f'Experiment name: {args.exp_name}')
-    logging.info(f'Prompt template: {args.prompt_template}')
+    logging.info(f'Prompt template: {json.dumps(args.prompt_template, indent=4)}')
 
     # 输出更详细信息，json.dump(data,f) 输出到文件并且无返回值，json.dumps(data) 返回字符串
     logging.debug(f'Arguments: {json.dumps(vars(args), indent=4)}') 
@@ -199,16 +190,23 @@ def main():
 
     for idx, item in enumerate(tqdm(dataset[resume_start:], desc="Processing items"), start=resume_start + 1):
         audio_path = item['audio_path']
-        prompt = generate_prompt(item, ref_num=args.ref_num)
-        output = inference_single(
-            audio_path=audio_path,
-            prompt=prompt,
-            model=model,
-        )
-        item['prompt'] = prompt
-        item['output'] = output
-        result.append(item)
+        item['prompt'] = {}
+        item['output'] = {}
 
+        for (ptype, prompt) in args.prompt_template.items():
+            prompt = prompt.format(
+                caption_0=item['caption_0'],
+                caption_1=item['caption_1'],
+            )
+            output = inference_single(
+                audio_path=audio_path,
+                prompt=prompt,
+                model=model,
+            )
+            item['prompt'][ptype] = prompt
+            item['output'][ptype] = output
+
+        result.append(item)
         # save_interval 次数保存一次中间结果
         save_interval = 100
         if idx % save_interval == 0:

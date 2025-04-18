@@ -11,7 +11,8 @@ BASE_DIR = '/mnt/public/data/lh/chy'
 META_DIR = f'{BASE_DIR}/BRACE_Eval/BRACE'
 
 # Qwen Pretrained Model Path
-MODEL_DIR = f'{BASE_DIR}/models'
+# Qwen 的模型位置修改为 lh/models，通过相对路径定位
+MODEL_DIR = f'{BASE_DIR}/../models'
 
 # LALM Directory
 LALM_DIR = f'{BASE_DIR}/BRACE_Eval/LALM'

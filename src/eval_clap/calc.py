@@ -111,12 +111,13 @@ def main():
         with open(meta_path, 'r') as f:
             result = json.load(f)
 
-        # NOTE: task_name 的元素是硬编码进去的，如果有新的元素需要修改
+        # FIXME: CLAP result 中没有 Prompt, Tie 属性
+        # FIXME: 提取属性时按照 _ 划分，所有 model 的名称中不能包含 _
         task_name = os.path.basename(meta_path).split('.')[0] # 去除后缀 .json
         task_attr = task_name.split('_')
         task_attr_name = ['Dataset', 'Type', 'Version', 'Model']
         assert len(task_attr) == len(task_attr_name), f"Task name {task_name} does not match expected format"
-        ans = dict(zip(task_attr_name, task_attr))
+        ans = dict(zip(task_attr_name, task_attr)) # 能够将 tuple list 转换为 dict
 
         check(result)
         total_count = len(result)
@@ -134,22 +135,23 @@ def main():
             'unknown': 100.0 * unknown_count / total_count,
         })
 
-        # NOTE: Main 和 Hallu 的结果分开进行统计
         if 'Main' in task_name:
-            # NOTE: 按照 BRACE 中的方式进行 filter
+            # NOTE: 按照 BRACE 的标准进行筛选，排除掉 score 在 [-1, 1] 之间的结果
+            origin_num = len(result)
             result = [item for item in result if item['score'] <= -2 or item['score'] >= 2]
-            
-            # TODO: 没有进行更加具体的分类，论文上放不下
-            # 在这里实现 All，反正这部分计算的开销很小，重复计算没有问题
-            pair_type_dict = {
-                'HH': ['Human-Human'],
-                'HM': ['Human-Machine_1', 'Human-Machine_2'],
-                'MM': ['Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3'],
-                'All': ['Human-Human', 'Human-Machine_1', 'Human-Machine_2', 'Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3']
-            }
+            logging.info(f'Filtered result: {len(result)} out of {origin_num} items')
 
-            for pair_type, pair_list in pair_type_dict.items():
-                pair_result = [item for item in result if item['pair_type'] in pair_list]
+            # NOTE: 考虑到 GTY 整理的数据的不同格式
+            pair_type_dict = {
+                'HH': ['Human-Human', 'HH'],
+                'HM': ['Human-Machine_1', 'Human-Machine_2', 'HM_1', 'HM_2', 'HM1', 'HM2'],
+                'MM': ['Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3', 'MM_1', 'MM_2', 'MM_3', 'MM1', 'MM2', 'MM3'],
+            }
+            pair_type_dict['All'] = pair_type_dict['HH'] + pair_type_dict['HM'] + pair_type_dict['MM']
+
+            for pair_type, name_list in pair_type_dict.items():
+                # 根据 name_list 筛选出对应 pair_type 的所有 pairs
+                pair_result = [item for item in result if item['pair_type'] in name_list]
                 pair_metric = calc_metrics(pair_result)
 
                 ans[pair_type + '_acc'] = pair_metric['acc']
@@ -158,7 +160,7 @@ def main():
 
         elif 'Hallu' in task_name:
             metric = calc_metrics(result)
-            ans.update(metric) # update 会覆盖原有的值
+            ans.update(metric)
             Hallu_result.append(ans)
 
     Main_path = os.path.join(args.log_dir, 'Main_result.csv')

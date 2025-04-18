@@ -4,7 +4,15 @@ import numpy as np
 
 from ..utils import CLAP_DIR
 
-class CLAP_CLASS():
+
+# NOTE: CLAP 内部分别实现 get_emb 和 get_emb_batch，由于外部控制了，这里不用控制
+# 既然已经写了我也不好更改，还是加一个 batch_size 参数吧，可以在 factory.py/create_model 里设置
+
+# NOTE: 不同的 CLAP backend 内部使用的 encode 函数不同，所以需要单独重写处理
+# NOTE: 部分 CLAP backend 没有设置 no_grad，所以需要手动设置
+
+
+class BASE_CLAP():
     def __init__(self):
         pass
 
@@ -15,29 +23,20 @@ class CLAP_CLASS():
         raise NotImplementedError
 
 
-class MS_CLAP_2023(CLAP_CLASS):
-    def __init__(
-            self,
-            batch_size=128,
-            use_local_model=True,
-            use_cuda=True
-        ):
-        # logging.info("Loading MS_CLAP_2023 model...")
+class MS_CLAP_2023(BASE_CLAP):
+    def __init__(self, batch_size=128, use_local_model=False):
         if use_local_model:
-            # logging.info("Loading local MS_CLAP_2023 model...")
             from msclap import CLAP
             model_fp = f"{CLAP_DIR}/MS_CLAP/CLAP_weights_2023.pth"
-            # logging.info(model_fp)
-            self.model = CLAP(model_fp=model_fp, version='2023', use_cuda=use_cuda)
+            self.model = CLAP(model_fp=model_fp, version='2023', use_cuda=True)
         else:
             from msclap import CLAP
-            self.model = CLAP(version='2023', use_cuda=use_cuda)
+            self.model = CLAP(version='2023', use_cuda=True) # 都使用 cuda
 
         self.batch_size = batch_size
-        self.device = "cuda" if use_cuda and torch.cuda.is_available() else "cpu"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.duration = self.model.args.duration
         self.sampling_rate = self.model.args.sampling_rate
-
         
     def _tokenize_text(self, text):
         if 'gpt' in self.model.args.text_model:
@@ -51,14 +50,13 @@ class MS_CLAP_2023(CLAP_CLASS):
             truncation=True
         )
         return tok
-    
 
     def tokenize_text(self, text):
+        # tokenize_text 还被用于计算 tf-idf
         tokens = self._tokenize_text(text)['input_ids'].reshape(-1).tolist()
         end_token = max(tokens)
         end_token_index = tokens.index(end_token)
         return tokens[:end_token_index]
-
 
     def get_text_embs(self, texts):
         batch_size = self.batch_size
@@ -68,7 +66,6 @@ class MS_CLAP_2023(CLAP_CLASS):
             all_embs.append(batch_embs)
         all_embs = torch.cat(all_embs, dim=0)
         return all_embs
-
 
     def get_audio_embs(self, audio_full, audio_clip):
         # audio_clip List[List[torch.Tensor(N, )]]
@@ -99,25 +96,19 @@ class MS_CLAP_2023(CLAP_CLASS):
 
 
 class MS_CLAP_2022(MS_CLAP_2023):
-    def __init__(
-            self, 
-            batch_size=128, 
-            use_local_model=True, 
-            use_cuda=True
-        ):
+    def __init__(self, batch_size=128, use_local_model=True):
         if use_local_model:
             from msclap import CLAP
             model_fp = f"{CLAP_DIR}/MS_CLAP/CLAP_weights_2022.pth"
-            self.model = CLAP(model_fp=model_fp, version='2022', use_cuda=use_cuda)
+            self.model = CLAP(model_fp=model_fp, version='2022', use_cuda=True)
         else:
             from msclap import CLAP
-            self.model = CLAP(version='2022', use_cuda=use_cuda)
+            self.model = CLAP(version='2022', use_cuda=True)
 
         self.batch_size = batch_size
-        self.device = "cuda" if use_cuda and torch.cuda.is_available() else "cpu"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.duration = self.model.args.duration
         self.sampling_rate = self.model.args.sampling_rate
-
     
     def tokenize_text(self, text):
         tok = self._tokenize_text(text)
@@ -132,12 +123,7 @@ class MS_CLAP_2022(MS_CLAP_2023):
 
 
 class M2D_CLAP(MS_CLAP_2022):
-    def __init__(
-            self,
-            batch_size=128,
-            use_local_model=True,
-            use_cuda=True
-        ):
+    def __init__(self, batch_size=128, use_local_model=True):
         if use_local_model:
             from CLAP.M2D_CLAP.m2d.examples.portable_m2d import PortableM2D
             model_fp = f"{CLAP_DIR}/M2D_CLAP/m2d_clap_vit_base-80x608p16x16-240128/checkpoint-300.pth"
@@ -146,7 +132,7 @@ class M2D_CLAP(MS_CLAP_2022):
             raise NotImplementedError("M2D model is not available for now.")
 
         self.batch_size = batch_size
-        self.device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = model.to(self.device)
         self.duration = 10 
         self.sampling_rate = 16000
@@ -161,7 +147,6 @@ class M2D_CLAP(MS_CLAP_2022):
             return_tensors='pt'
         )
         return tok
-
 
     def get_audio_embs(self, audio_full, audio_clip):
         # audio_clip List[List[torch.Tensor(N, )]]
@@ -204,46 +189,15 @@ class M2D_CLAP(MS_CLAP_2022):
             all_embs = torch.cat(all_embs, dim=0)
         return all_embs
 
-    def load_audio(self, audio_path, resample=True):
-        import random
-        import torchaudio
-        import torchaudio.transforms as T
-
-        resample_rate = self.sampling_rate
-        duration = self.duration
-        audio_time_series, sample_rate = torchaudio.load(audio_path)
-        
-        if resample and resample_rate != sample_rate:
-            resampler = T.Resample(sample_rate, resample_rate)
-            audio_time_series = resampler(audio_time_series)
-            sample_rate = resample_rate
-        
-        audio = audio_time_series.reshape(-1)
-
-        if duration*sample_rate >= audio.shape[0]:
-            repeat_factor = int(np.ceil((duration*sample_rate) / audio.shape[0]))
-            audio = audio.repeat(repeat_factor)
-            audio = audio[0: duration*sample_rate]
-        else:
-            start_index = random.randrange(audio.shape[0] - duration*sample_rate)
-            audio = audio[start_index:start_index + duration*sample_rate]
-        tensor = torch.tensor(audio, dtype=torch.float32).reshape(-1)
-        return tensor
-
 
 class LAION_CLAP(M2D_CLAP):
-    def __init__(
-            self,
-            batch_size=128,
-            use_local_model=False,
-            use_cuda=True
-        ):
+    def __init__(self, batch_size=128):
         import laion_clap
         model = laion_clap.CLAP_Module(enable_fusion=False)
         model.load_ckpt()
 
         self.batch_size = batch_size
-        self.device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = model.to(self.device)
         self.duration = 10
         self.sampling_rate = 48000
@@ -295,7 +249,7 @@ class LAION_CLAP(M2D_CLAP):
         return all_embs
 
 
-class AF2_CLAP:
+class AF2_CLAP(BASE_CLAP):
     def __init__(
             self,
             batch_size=128,
