@@ -117,60 +117,118 @@ def main():
         task_attr = task_name.split('_')
         task_attr_name = ['Dataset', 'Type', 'Version', 'Model']
         assert len(task_attr) == len(task_attr_name), f"Task name {task_name} does not match expected format"
-        ans = dict(zip(task_attr_name, task_attr)) # 能够将 tuple list 转换为 dict
 
-        check(result)
-        total_count = len(result)
-        zero_count = sum(1 for item in result if item['prediction'] == '0')
-        one_count = sum(1 for item in result if item['prediction'] == '1')
-        tie_count = sum(1 for item in result if item['prediction'] == 'tie')
-        unknown_count = total_count - zero_count - one_count - tie_count
+        import copy
+        origin_result = copy.deepcopy(result)
+
+        for ref_num in result[0]['prediction'].keys():
+            ans = dict(zip(task_attr_name, task_attr)) # 能够将 tuple list 转换为 dict
+            ans.update({'Ref': ref_num.split('_')[0]})
+
+            for idx in range(len(result)):
+                result[idx]['prediction'] = origin_result[idx]['prediction'][ref_num]
         
-        # FIXME: ans 和 result 命名不要混淆
-        ans.update({
-            'total': total_count,
-            'zero': 100.0 * zero_count / total_count,
-            'one': 100.0 * one_count / total_count,
-            'tie': 100.0 * tie_count / total_count,
-            'unknown': 100.0 * unknown_count / total_count,
-        })
+            total_count = len(result)
+            zero_count = sum(1 for item in result if item['prediction'] == '0')
+            one_count = sum(1 for item in result if item['prediction'] == '1')
+            tie_count = sum(1 for item in result if item['prediction'] == 'tie')
+            unknown_count = total_count - zero_count - one_count - tie_count
+            
+            # FIXME: ans 和 result 命名不要混淆
+            ans.update({
+                'total': total_count,
+                'zero': 100.0 * zero_count / total_count,
+                'one': 100.0 * one_count / total_count,
+                'tie': 100.0 * tie_count / total_count,
+                'unknown': 100.0 * unknown_count / total_count,
+            })
 
-        if 'Main' in task_name:
-            # NOTE: 按照 BRACE 的标准进行筛选，排除掉 score 在 [-1, 1] 之间的结果
-            origin_num = len(result)
-            result = [item for item in result if item['score'] <= -2 or item['score'] >= 2]
-            logging.info(f'Filtered result: {len(result)} out of {origin_num} items')
+            if 'Main' in task_name:
+                # NOTE: 按照 BRACE 的标准进行筛选，排除掉 score 在 [-1, 1] 之间的结果
+                origin_num = len(result)
+                result = [item for item in result if item['score'] <= -2 or item['score'] >= 2]
+                logging.info(f'Filtered result: {len(result)} out of {origin_num} items')
 
-            # NOTE: 考虑到 GTY 整理的数据的不同格式
-            pair_type_dict = {
-                'HH': ['Human-Human', 'HH'],
-                'HM': ['Human-Machine_1', 'Human-Machine_2', 'HM_1', 'HM_2', 'HM1', 'HM2'],
-                'MM': ['Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3', 'MM_1', 'MM_2', 'MM_3', 'MM1', 'MM2', 'MM3'],
-            }
-            pair_type_dict['All'] = pair_type_dict['HH'] + pair_type_dict['HM'] + pair_type_dict['MM']
+                # NOTE: 考虑到 GTY 整理的数据的不同格式
+                pair_type_dict = {
+                    'HH': ['Human-Human', 'HH'],
+                    'HM': ['Human-Machine_1', 'Human-Machine_2', 'HM_1', 'HM_2', 'HM1', 'HM2'],
+                    'MM': ['Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3', 'MM_1', 'MM_2', 'MM_3', 'MM1', 'MM2', 'MM3'],
+                }
+                pair_type_dict['All'] = pair_type_dict['HH'] + pair_type_dict['HM'] + pair_type_dict['MM']
 
-            for pair_type, name_list in pair_type_dict.items():
-                # 根据 name_list 筛选出对应 pair_type 的所有 pairs
-                pair_result = [item for item in result if item['pair_type'] in name_list]
-                pair_metric = calc_metrics(pair_result)
+                for pair_type, name_list in pair_type_dict.items():
+                    # 根据 name_list 筛选出对应 pair_type 的所有 pairs
+                    pair_result = [item for item in result if item['pair_type'] in name_list]
+                    pair_metric = calc_metrics(pair_result)
 
-                ans[pair_type + '_acc'] = pair_metric['acc']
-                ans[pair_type + '_f1'] = pair_metric['f1']
-            Main_result.append(ans)
+                    ans[pair_type + '_acc'] = pair_metric['acc']
+                    ans[pair_type + '_f1'] = pair_metric['f1']
+                Main_result.append(ans)
 
-        elif 'Hallu' in task_name:
-            metric = calc_metrics(result)
-            ans.update(metric)
-            Hallu_result.append(ans)
+            elif 'Hallu' in task_name:
+                metric = calc_metrics(result)
+                ans.update(metric)
+                Hallu_result.append(ans)
 
-    Main_path = os.path.join(args.log_dir, 'Main_result.csv')
     Main_df = pd.DataFrame(Main_result)
-    Main_df.to_csv(Main_path, index=False)
+    Main_df.to_excel(os.path.join(args.log_dir, 'Main_result.xlsx'), index=False)
+    Main_df.to_csv(os.path.join(args.log_dir, 'Main_result.csv'), index=False)
 
-    Hallu_path = os.path.join(args.log_dir, 'Hallu_result.csv')
     Hallu_df = pd.DataFrame(Hallu_result)
-    Hallu_df.to_csv(Hallu_path, index=False)
+    Hallu_df.to_excel(os.path.join(args.log_dir, 'Hallu_result.xlsx'), index=False)
+    Hallu_df.to_csv(os.path.join(args.log_dir, 'Hallu_result.csv'), index=False)
+
+
+def process():
+    import numpy as np
+    process_dir = "/mnt/public/data/lh/chy/BRACE_Eval/final_res/CLAP"
+    # process_dir = "/mnt/public/data/lh/chy/BRACE_Eval/final_res/test"
+    json_files = [f for f in os.listdir(process_dir) if f.endswith('.json')]
+
+
+    for json_file in json_files:
+        json_path = os.path.join(process_dir, json_file)
+        with open(json_path, 'r') as f:
+            result = json.load(f)
+
+        logging.info(f'Processing file: {json_path}')
+
+        # test_item = result[0]
+        # print(test_item['ref_score_0'])
+        # print(type(test_item['ref_score_0']))
+        # print(max(test_item['ref_score_0'][:2]), max(test_item['ref_score_0'][:5]))
+        # print(test_item['ref_score_0'][4], type(test_item['ref_score_0'][4]))
+
+        for item in result:
+            # pop 会删除原有的 key
+            score_0, score_1 = item['score_0'], item['score_1'] # audio score
+            src_score, dst_score = item.pop('src_score'), item.pop('dst_score')
+            ref_score_0, ref_score_1 = item['ref_score_0'], item['ref_score_1']
+
+            ref_score_0 = np.array(ref_score_0)
+            ref_score_1 = np.array(ref_score_1)
+
+            prediction_dict, score0_dict, score1_dict = {}, {}, {}
+            for num in [0, 1, 2, 3, 4, 5]:
+                key = f'{str(num)}_ref'
+                score0_dict[key] = (score_0 + np.nanmax(ref_score_0[:num])) / 2 if num > 0 else score_0
+                score1_dict[key] = (score_1 + np.nanmax(ref_score_1[:num])) / 2 if num > 0 else score_1
+                prediction_dict[key] = '0' if score0_dict[key] > score1_dict[key] else '1'
+
+            item.update({
+                'audio_score_0': score_0,
+                'audio_score_1': score_1,
+                'prediction': prediction_dict,
+                'score_0': score0_dict,
+                'score_1': score1_dict,
+            })
+        
+        new_json_path = json_path
+        with open(new_json_path, 'w') as f:
+            json.dump(result, f, indent=4)
 
 
 if __name__ == '__main__':
     main()
+    # process()

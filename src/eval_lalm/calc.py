@@ -114,60 +114,75 @@ def main():
         # NOTE: task_name 的元素是硬编码进去的，如果有新的元素需要修改
         task_name = os.path.basename(meta_path).split('.')[0] # 去除后缀 .json
         task_attr = task_name.split('_')
-        task_attr_name = ['Dataset', 'Type', 'Version', 'Model', 'Prompt', 'Tie']
+        task_attr_name = ['Dataset', 'Type', 'Version', 'Model']
         assert len(task_attr) == len(task_attr_name), f"Task name {task_name} does not match expected format"
-        ans = dict(zip(task_attr_name, task_attr))
-
-        check(result)
-        total_count = len(result)
-        zero_count = sum(1 for item in result if item['prediction'] == '0')
-        one_count = sum(1 for item in result if item['prediction'] == '1')
-        tie_count = sum(1 for item in result if item['prediction'] == 'tie')
-        unknown_count = total_count - zero_count - one_count - tie_count
         
-        # FIXME: ans 和 result 命名不要混淆
-        ans.update({
-            'total': total_count,
-            'zero': 100.0 * zero_count / total_count,
-            'one': 100.0 * one_count / total_count,
-            'tie': 100.0 * tie_count / total_count,
-            'unknown': 100.0 * unknown_count / total_count,
-        })
+        import copy
+        origin_result = copy.deepcopy(result)
 
-        # NOTE: Main 和 Hallu 的结果分开进行统计
-        if 'Main' in task_name:
-            # NOTE: 按照 BRACE 中的方式进行 filter
-            result = [item for item in result if item['score'] <= -2 or item['score'] >= 2]
+        for prompt_type in result[0]['prediction'].keys():
+            ans = dict(zip(task_attr_name, task_attr))
+            prompt_attr = prompt_type.split('_')
+            ans.update({
+                'Prompt': prompt_attr[0],
+                'Tie': 'tie' if prompt_attr[1] == 'tie' else 'non-tie',
+                'Ref': 'non-ref' if len(prompt_attr) == 2 else 'ref'
+            })
+
+            for idx in range(len(result)):
+                result[idx]['prediction'] = origin_result[idx]['prediction'][prompt_type]
+
+            check(result)
+            total_count = len(result)
+            zero_count = sum(1 for item in result if item['prediction'] == '0')
+            one_count = sum(1 for item in result if item['prediction'] == '1')
+            tie_count = sum(1 for item in result if item['prediction'] == 'tie')
+            unknown_count = total_count - zero_count - one_count - tie_count
             
-            # TODO: 没有进行更加具体的分类，论文上放不下
-            # 在这里实现 All，反正这部分计算的开销很小，重复计算没有问题
-            pair_type_dict = {
-                'HH': ['Human-Human'],
-                'HM': ['Human-Machine_1', 'Human-Machine_2'],
-                'MM': ['Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3'],
-                'All': ['Human-Human', 'Human-Machine_1', 'Human-Machine_2', 'Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3']
-            }
+            # FIXME: ans 和 result 命名不要混淆
+            # dict 直接 update 并且没有返回值
+            ans.update({
+                'total': total_count,
+                'zero': 100.0 * zero_count / total_count,
+                'one': 100.0 * one_count / total_count,
+                'tie': 100.0 * tie_count / total_count,
+                'unknown': 100.0 * unknown_count / total_count,
+            })
 
-            for pair_type, pair_list in pair_type_dict.items():
-                pair_result = [item for item in result if item['pair_type'] in pair_list]
-                pair_metric = calc_metrics(pair_result)
+            # NOTE: Main 和 Hallu 的结果分开进行统计
+            if 'Main' in task_name:
+                # NOTE: 按照 BRACE 中的方式进行 filter
+                result = [item for item in result if item['score'] <= -2 or item['score'] >= 2]
+                
+                # TODO: 没有进行更加具体的分类，论文上放不下
+                # 在这里实现 All，反正这部分计算的开销很小，重复计算没有问题
+                pair_type_dict = {
+                    'HH': ['Human-Human'],
+                    'HM': ['Human-Machine_1', 'Human-Machine_2'],
+                    'MM': ['Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3'],
+                    'All': ['Human-Human', 'Human-Machine_1', 'Human-Machine_2', 'Machine-Machine_1', 'Machine-Machine_2', 'Machine-Machine_3']
+                }
 
-                ans[pair_type + '_acc'] = pair_metric['acc']
-                ans[pair_type + '_f1'] = pair_metric['f1']
-            Main_result.append(ans)
+                for pair_type, pair_list in pair_type_dict.items():
+                    pair_result = [item for item in result if item['pair_type'] in pair_list]
+                    pair_metric = calc_metrics(pair_result)
 
-        elif 'Hallu' in task_name:
-            metric = calc_metrics(result)
-            ans.update(metric) # update 会覆盖原有的值
-            Hallu_result.append(ans)
+                    ans[pair_type + '_acc'] = pair_metric['acc']
+                    ans[pair_type + '_f1'] = pair_metric['f1']
+                Main_result.append(ans)
 
-    Main_path = os.path.join(args.log_dir, 'Main_result.csv')
+            elif 'Hallu' in task_name:
+                metric = calc_metrics(result)
+                ans.update(metric) # update 会覆盖原有的值
+                Hallu_result.append(ans)
+
     Main_df = pd.DataFrame(Main_result)
-    Main_df.to_csv(Main_path, index=False)
+    Main_df.to_excel(os.path.join(args.log_dir, 'Main_result.xlsx'), index=False)
+    Main_df.to_csv(os.path.join(args.log_dir, 'Main_result.csv'), index=False)
 
-    Hallu_path = os.path.join(args.log_dir, 'Hallu_result.csv')
     Hallu_df = pd.DataFrame(Hallu_result)
-    Hallu_df.to_csv(Hallu_path, index=False)
+    Hallu_df.to_excel(os.path.join(args.log_dir, 'Hallu_result.xlsx'), index=False)
+    Hallu_df.to_csv(os.path.join(args.log_dir, 'Hallu_result.csv'), index=False)
 
 
 if __name__ == '__main__':

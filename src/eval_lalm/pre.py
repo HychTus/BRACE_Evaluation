@@ -80,6 +80,8 @@ def setup_experiment(args):
             if not hasattr(args, key):
                 setattr(args, key, value)
             else:
+                if key in ['resume']:
+                    continue
                 assert getattr(args, key) == value, f"Argument {key} does not match saved config. Please check."
         logging.info(f"Resuming experiment from config: {args.exp_name}")
 
@@ -197,6 +199,7 @@ def main():
             prompt = prompt.format(
                 caption_0=item['caption_0'],
                 caption_1=item['caption_1'],
+                ref=' '.join(item['references'][:args.ref_num]),
             )
             output = inference_single(
                 audio_path=audio_path,

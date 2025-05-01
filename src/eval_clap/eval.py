@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument('--model_name', type=str, required=True, help='CLAP model name')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     parser.add_argument('--toy_dataset', action='store_true', help='Use toy dataset for testing')
+    parser.add_argument('--ref_num', type=int, default=0, help='Number of reference scores to use; 0 means no reference scores')
     return parser.parse_args()
 
 
@@ -81,30 +82,47 @@ def main():
     model = create_model(args.model_name)
 
     logging.info(f'Start inference on {args.dataset_name} with {args.model_name}')
-    src_captions = [item['caption_0'] for item in dataset]
-    dst_captions = [item['caption_1'] for item in dataset]
+    captions_0 = [item['caption_0'] for item in dataset]
+    captions_1 = [item['caption_1'] for item in dataset]
+    refs = [item['references'][:args.ref_num] for item in dataset]
     audios = [item['audio_path'] for item in dataset]
     answers = [item['answer'] for item in dataset] # item['answer']: int
 
     # NOTE: model.score 返回的 score 类型是 numpy.ndarray
-    src_score = model.score(src_captions, audios)
-    dst_score = model.score(dst_captions, audios)
-    predictions = np.where(src_score > dst_score, 0, 1)
+    scores_0 = model.score(captions_0, audios)
+    scores_1 = model.score(captions_1, audios)
 
+    if args.ref_num > 0:
+        ref_scores_0 = model.score_ref(captions_0, refs)
+        ref_scores_1 = model.score_ref(captions_1, refs)
+        src_scores = (scores_0 + np.max(ref_scores_0, axis=1)) / 2
+        dst_scores = (scores_1 + np.max(ref_scores_1, axis=1)) / 2
+    else:
+        src_scores = scores_0
+        dst_scores = scores_1
+    predictions = np.where(src_scores > dst_scores, 0, 1)
+
+    # NOTE: 简单计算整体的 accuracy 和 f1-score，详细的计算在 calc.py
     # Calculate accuracy
     accuracy = np.mean(predictions == answers)
     logging.info(f'Accuracy: {accuracy * 100:.4f}')
-
     # Calculate F1-score
     f1 = f1_score(answers, predictions, average='binary')
     logging.info(f'F1-score: {f1 * 100:.4f}')
 
+    # 将 audio score 和 ref score 都进行保存
     result = []
     for index, item in enumerate(dataset):
         # FIXME: 需要从 np.int64/np.float32 转换为 int/float 后 json 才能序列化
-        item['score_0'] = float(src_score[index])
-        item['score_1'] = float(dst_score[index])
+        item['src_score'] = float(src_scores[index])
+        item['dst_score'] = float(dst_scores[index])
+        item['score_0'] = float(scores_0[index])
+        item['score_1'] = float(scores_1[index])
         item['prediction'] = str(predictions[index])
+        if args.ref_num > 0:
+            item['ref_score_0'] = ref_scores_0[index].tolist()
+            item['ref_score_1'] = ref_scores_1[index].tolist()
+
         result.append(item)
 
     result_path = os.path.join(args.log_dir, f'{args.task_name}.json')

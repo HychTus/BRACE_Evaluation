@@ -17,4 +17,4 @@ python -m src.eval_lalm.post \
     --target "$TARGET" \
     --log_base_dir "$LOG_PATH" \
     --model_name "$MODEL_NAME" \
-    --prompt_template_type "final_version" \
+    --prompt_template_type "summary_v0" \

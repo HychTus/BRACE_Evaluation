@@ -7,7 +7,7 @@ def create_model(model_name):
     if model_name == 'GAMA':
         return GAMA(
             base_model_path=f"{LALM_DIR}/GAMA/models/Llama-2-7b-chat-hf-qformer",
-            eval_mdl_path=f"{LALM_DIR}/GAMA/models/checkpoint-2500",
+            eval_mdl_path=f"{LALM_DIR}/GAMA/models/checkpoint-2500/pytorch_model.bin",
             base_dir=f"{LALM_DIR}/GAMA",
             use_fp16=False,
         )

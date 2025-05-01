@@ -12,11 +12,11 @@ AUDIO_PATH="${BASE_DIR}/data/BRACE"
 
 # ---------- Debug ----------
 # EXP_NAME='test_clap'
-# MODEL_NAME='MS_CLAP_2023'
+# MODEL_NAME='LAION_CLAP'
 # DATA_NAME='Clotho'
 # DATA_TYPE='Hallu'
 # DATA_VERSION='v2s'
-# CUDA='0'
+# CUDA='2'
 # LOG_PATH="${BASE_DIR}/BRACE_Eval/logs"
 
 # ---------- Script ----------
@@ -35,6 +35,7 @@ python -m src.eval_clap.eval \
     --meta_type "$DATA_TYPE" \
     --audio_base_dir "${AUDIO_PATH}/${DATA_TYPE}/${DATA_NAME}/audio" \
     --model_name "$MODEL_NAME" \
+    --ref_num 5 \
     # --toy_dataset \
     # --debug \
     # --exp_name "$EXP_NAME" \

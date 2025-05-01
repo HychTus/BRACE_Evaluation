@@ -93,7 +93,7 @@ class GAMA(BaseModel):
 
         generation_config = GenerationConfig(
             do_sample=True,
-            temperature=0.1,
+            temperature=0.01,
             top_p=0.95,
             max_new_tokens=400,
             bos_token_id=self.model.config.bos_token_id,
@@ -218,7 +218,7 @@ class LTU(BaseModel):
 
         generation_config = GenerationConfig(
             do_sample=True,
-            temperature=0.1,
+            temperature=0.01,
             top_p=0.95,
             max_new_tokens=400,
             bos_token_id=self.model.config.bos_token_id,

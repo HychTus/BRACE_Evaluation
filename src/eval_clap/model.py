@@ -123,6 +123,29 @@ class SLIDE_CLAP:
         results = np.array(results, dtype=np.float32)
         return results
 
+    def score_ref(self, captions, refs):
+        results = []
+        max_len = max([len(ref) for ref in refs])
+        for idx in tqdm(range(0, len(captions), self.batch_size), desc="SLIDE CLAP scoring captions and refs"):
+            idx_range = []
+            batch_captions, batch_refs = [], []
+            for i in range(idx, min(idx+self.batch_size, len(captions))):
+                # 如果超出了 index 会导致 refs[i] 访问错误
+                idx_range.append((len(batch_refs), len(batch_refs) + len(refs[i])))
+                batch_captions.extend([captions[i]] * len(refs[i])) # 需要进行复制
+                batch_refs.extend(refs[i])
+                
+            caption_embs = self.encode_text(batch_captions)
+            ref_embs = self.encode_text(batch_refs)
+            flatten_results = self._calc_match_score(caption_embs, ref_embs)
+
+            for start, end in idx_range:
+                curr_result = flatten_results[start:end]
+                curr_result += [np.nan] * (max_len - len(curr_result))
+                results.append(curr_result)
+        results = np.array(results, dtype=np.float32)
+        return results
+
 
 if __name__ == "__main__":
     pass

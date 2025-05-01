@@ -12,12 +12,12 @@ AUDIO_PATH="${BASE_DIR}/data/BRACE"
 
 # ---------- Debug ----------
 # EXP_NAME='test_pre'
-# MODEL_NAME='AF2-3B'
+# MODEL_NAME='GAMA'
 # DATA_NAME='Clotho'
 # DATA_TYPE='Hallu'
 # DATA_VERSION='v2s'
 # PROMPT='all'
-# CUDA='1'
+# CUDA='0'
 # LOG_PATH="${BASE_DIR}/BRACE_Eval/logs/temp"
 
 # ---------- Script ----------
@@ -27,6 +27,7 @@ DATA_TYPE=$3
 DATA_VERSION=$4
 PROMPT=$5
 CUDA=$6
+# EXP_NAME=$7
 
 # 为什么需要重新定义函数才能生效？使用的不同的 bash 进行运行？
 # 直接运行的话使用的是 sh 而不是 bash，所以先前的配置不生效（但是开头应该限制了解析的方式？）
@@ -43,7 +44,12 @@ python -m src.eval_lalm.pre \
     --model_name "$MODEL_NAME" \
     --single_inference \
     --prompt_template_type "$PROMPT" \
+    --ref_num 1 \
+    # --toy_dataset \
+    # --exp_name "$EXP_NAME" \
+    # --resume \
 
+# --ref_num 1 \
 # --toy_dataset \
 # --exp_name "$EXP_NAME" \
 # --debug \

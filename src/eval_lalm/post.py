@@ -86,7 +86,7 @@ def main():
     llm = LLM(
         model=model_path,
         tensor_parallel_size=1,      # 根据GPU数量调整 （单卡模型并非越多越好）
-        gpu_memory_utilization=0.95,  # 设置GPU利用率
+        gpu_memory_utilization=0.90,  # 设置GPU利用率
         max_num_seqs=256,            # 设置最大并行生成数量
     )
 
@@ -107,18 +107,23 @@ def main():
             result = json.load(f)
 
         prompts = []
-        for item in result:
-            prompt = prompt_template.format(
-                caption_0=item['caption_0'],
-                caption_1=item['caption_1'],
-                answer=item['output']
-            )
-            item['post_prompt'] = prompt
-            prompts.append(prompt)
+        idx_map = []
+        for idx, item in enumerate(result):
+            item['post_prompt'] = {}
+            item['prediction'] = {}
+            for key in item['output'].keys():
+                prompt = prompt_template.format(
+                    caption_0=item['caption_0'],
+                    caption_1=item['caption_1'],
+                    answer=item['output'][key]
+                )
+                item['post_prompt'][key] = prompt
+                prompts.append(prompt)
+                idx_map.append((idx, key))
 
         outputs = llm.generate(prompts, sampling_params)
-        for item, output in zip(result, outputs):
-            item['prediction'] = output.outputs[0].text
+        for (idx, key), output in zip(idx_map, outputs):
+            result[idx]['prediction'][key] = output.outputs[0].text
 
         result_path = os.path.join(args.log_dir, os.path.basename(meta_path))
         logging.info(f'Result saved to {result_path}')
@@ -140,7 +145,7 @@ def test_vllm():
     llm = LLM(
         model=model_path,
         tensor_parallel_size=1,      # 根据GPU数量调整 （单卡模型并非越多越好）
-        gpu_memory_utilization=0.95,  # 设置GPU利用率
+        gpu_memory_utilization=0.90,  # 设置GPU利用率
         max_num_seqs=256,            # 设置最大并行生成数量
     )
 
