@@ -7,7 +7,7 @@ import torchaudio
 import torchaudio.transforms as T
 
 class SLIDE_CLAP:    
-    def __init__(self, hop_size, window_size, clap, batch_size=256):
+    def __init__(self, hop_size, window_size, clap, batch_size=512):
         self.clap = clap
         self.hop_size = hop_size
         self.window_size = window_size
@@ -145,6 +145,21 @@ class SLIDE_CLAP:
                 results.append(curr_result)
         results = np.array(results, dtype=np.float32)
         return results
+
+
+class SIMPLE_CLAP(SLIDE_CLAP):
+    # SIMPLE_CLAP 继承 SLIDE_CLAP，实际只需要对于 encode_audio 进行修改
+    # 如何尽量少的进行修改？CLAP 这部分的逻辑我不确定有没有问题
+    # 原本的 get_audio_embs_simple 处理的是 files 而不是 audio clips
+    # 因为是人工进行分割然后处理，所以需要深入处理一些内部的逻辑
+
+    def encode_audio(self, audio_paths):
+        origin_audio_paths = audio_paths.copy()
+        audio_paths = sorted(set(audio_paths))
+        idx_map = {audio_path: idx for idx, audio_path in enumerate(audio_paths)}
+        embs = self.clap.get_audio_embs_simple(audio_paths)
+        all_embs = [embs[idx_map[audio_path]] for audio_path in origin_audio_paths]
+        return all_embs
 
 
 if __name__ == "__main__":

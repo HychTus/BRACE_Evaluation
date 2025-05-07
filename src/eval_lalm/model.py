@@ -14,7 +14,7 @@ from peft import LoraConfig, get_peft_model
 
 
 class BaseModel(ABC):
-    @abstractmethod # 必须要实现的抽象方法
+    @abstractmethod
     def inference_single(self, audio_path: str, prompt: str):
         pass
 
@@ -82,7 +82,6 @@ class GAMA(BaseModel):
         inputs = self.tokenizer(prompt, return_tensors="pt")
         input_ids = inputs["input_ids"].to(self.device)
 
-        # 加载音频并进行处理
         cur_audio_input = None
         audio_info = "No audio provided"
         if audio_path != 'empty':
@@ -102,7 +101,6 @@ class GAMA(BaseModel):
             num_return_sequences=1
         )
 
-        # 生成输出
         with torch.no_grad():
             generation_output = self.model.generate(
                 input_ids=input_ids.to(self.device),
@@ -113,9 +111,8 @@ class GAMA(BaseModel):
                 max_new_tokens=400,
             )
 
-        # 解码输出并去除<s>和</s>标记
         s = generation_output.sequences[0]
-        output = self.tokenizer.decode(s)[len(prompt) + 6:-4]  # 去除 <s> 和 </s> 部分
+        output = self.tokenizer.decode(s)[len(prompt) + 6:-4]
         return output
 
 
@@ -123,14 +120,12 @@ class LTU(BaseModel):
     def __init__(self, base_model_path, eval_mdl_path, base_dir, use_fp16=False):
         from LALM.LTU.src.ltu.utils.prompter import Prompter
 
-        # NOTE: 注意将 LTU 中使用的相对路径都进行替换
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.prompter = Prompter('alpaca_short', base_dir=base_dir)
         self.tokenizer = LlamaTokenizer.from_pretrained(base_model_path)
         self.use_fp16 = use_fp16
 
         if self.device == "cuda":
-            # LTU 使用的是 float16，而 GAMA 使用的是 float32，内存占用会更小
             self.model = LlamaForCausalLM.from_pretrained(
                 base_model_path, 
                 device_map="auto", 
@@ -143,7 +138,7 @@ class LTU(BaseModel):
             r=8,
             lora_alpha=16,
             target_modules=["q_proj", "v_proj"],
-            lora_dropout=0.05, # LTU dropout 是 0.05，GAMA 是 0.0
+            lora_dropout=0.05,
             bias="none",
             task_type="CAUSAL_LM",
         )
@@ -151,7 +146,6 @@ class LTU(BaseModel):
         state_dict = torch.load(eval_mdl_path, map_location='cpu')
         self.model.load_state_dict(state_dict, strict=False)
 
-        # 先前 GAMA 遗忘了这部分代码
         self.model.is_parallelizable = True
         self.model.model_parallel = True
 
@@ -159,17 +153,12 @@ class LTU(BaseModel):
         self.model.config.bos_token_id = 1
         self.model.config.eos_token_id = 2
         
-        # self.model.to(self.device)
-        # 由于在 from_pretrained 时已经设置了 device_map，所以不需要再调用 to(self.device)
         self.model.eval()
 
     def load_audio(self, audio_path):
         waveform, sample_rate = torchaudio.load(audio_path)
         audio_info = 'Original input audio length {:.2f} seconds, number of channels: {:d}, sampling rate: {:d}.'.format(waveform.shape[1]/sample_rate, waveform.shape[0], sample_rate)
         
-        # NOTE: 不同的模型的 load audio 还是有区别，所以在 class 中实现
-        # 比如 GAMA 在构建 Mel Spectrogram 时使用的是双声道，LTU 使用的是单声道
-        # BUG: 加上 10s 长度的限制，会产生和 CLAP 类似的问题
         if waveform.shape[0] != 1:
             waveform = waveform[0].unsqueeze(0)
             audio_info += ' Only the first channel is used.'
@@ -202,10 +191,8 @@ class LTU(BaseModel):
         inputs = self.tokenizer(prompt, return_tensors="pt")
         input_ids = inputs["input_ids"].to(self.device)
 
-        # 加载音频并进行处理
         cur_audio_input = None
         audio_info = "No audio provided"
-        # NOTE: 由于标注了 audio_path 为 str 类型，所以使用 empty 而不是 None
         if audio_path != "empty":
             cur_audio_input, audio_info = self.load_audio(audio_path)
             cur_audio_input = cur_audio_input.unsqueeze(0)
@@ -237,9 +224,8 @@ class LTU(BaseModel):
                 max_new_tokens=400,
             )
 
-        # 解码输出并去除<s>和</s>标记
         s = generation_output.sequences[0]
-        output = self.tokenizer.decode(s)[len(prompt) + 6:-4]  # 去除 <s> 和 </s> 部分
+        output = self.tokenizer.decode(s)[len(prompt) + 6:-4]
         return output
     
 
@@ -290,25 +276,18 @@ class LTU_AS(BaseModel):
 
     def load_whisper_text_model(self):
         import whisper_at
-        
-        # return load_model("large-v2", device="cuda:1")
-        # BUG: 这里 load 到相同的模型上是否有问题？
-        # TODO: 这边模型下载的位置是哪里？是否要重新下载？
         return whisper_at.load_model("large-v2", device=self.device)
 
     def load_whisper_feat_model(self):
         from whisper.model import Whisper, ModelDimensions
         from ..utils import LALM_DIR
 
-        # BUG: 这里使用的是绝对路径，而不是传入的路径
         mdl_size = 'large-v1'
         checkpoint_path = f'{LALM_DIR}/LTU/pretrained_mdls/{mdl_size}.pt'
-        # BUG: 这里本来的 map_location 是 'cuda:0'，改成 'cpu' 也行？
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         dims = ModelDimensions(**checkpoint["dims"])
         whisper_feat_model = Whisper(dims)
         whisper_feat_model.load_state_dict(checkpoint["model_state_dict"], strict=False)
-        # BUG: 这里从 cuda:0 改为 self.device
         whisper_feat_model.to(self.device)
         return whisper_feat_model
 
@@ -368,7 +347,6 @@ class LTU_AS(BaseModel):
                 cur_audio_input = cur_audio_input.to(self.device)
         logging.debug(f"Audio info: {audio_info}")
 
-        # NOTE: temperature 竟然设得这么低，而且还设置了 top_k
         generation_config = GenerationConfig(
             do_sample=True,
             temperature=0.1,
@@ -550,7 +528,6 @@ class AF2(BaseModel):
         return audio_clips, audio_embed_mask
 
     def inference_single(self, audio_path, prompt):
-        # 处理文本 prompt
         text_prompt = str(prompt).lower()
         sample = f"<audio>{text_prompt.strip()}{self.tokenizer.sep_token}"
         text_inputs = self.tokenizer(
@@ -562,12 +539,10 @@ class AF2(BaseModel):
         )
         input_ids = text_inputs["input_ids"].to(self.device, non_blocking=True)
 
-        # 加载音频并处理
         audio_clips, audio_embed_mask = self.load_audio(audio_path, self.clap_config)
         audio_clips = audio_clips.to(self.device, dtype=self.cast_dtype, non_blocking=True)
         audio_embed_mask = audio_embed_mask.to(self.device, dtype=self.cast_dtype, non_blocking=True)
 
-        # 生成输出
         generation_kwargs = {
             "eos_token_id": self.tokenizer.eos_token_id,
             "max_new_tokens": 256,

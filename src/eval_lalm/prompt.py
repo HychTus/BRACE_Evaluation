@@ -173,12 +173,12 @@ C. Tie - it is not possible to determine which caption better satisfies the crit
 """
 
 pre_prompt_template = {
-    # "naive_nontie": naive_nontie,
-    # "naive_tie": naive_tie,
-    # "simple_nontie": simple_nontie,
-    # "simple_tie": simple_tie,
-    # "complex_nontie": complex_nontie,
-    # "complex_tie": complex_tie,
+    "naive_nontie": naive_nontie,
+    "naive_tie": naive_tie,
+    "simple_nontie": simple_nontie,
+    "simple_tie": simple_tie,
+    "complex_nontie": complex_nontie,
+    "complex_tie": complex_tie,
     "naive_nontie_ref": naive_nontie_ref,
     "naive_tie_ref": naive_tie_ref,
     "simple_nontie_ref": simple_nontie_ref,

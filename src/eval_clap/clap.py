@@ -37,7 +37,33 @@ class MS_CLAP_2023(BASE_CLAP):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.duration = self.model.args.duration
         self.sampling_rate = self.model.args.sampling_rate
+
+    def load_audio(self, audio_path, resample=True):
+        import random
+        import torchaudio
+        import torchaudio.transforms as T
+
+        resample_rate = self.sampling_rate
+        duration = self.duration
+        audio_time_series, sample_rate = torchaudio.load(audio_path)
         
+        if resample and resample_rate != sample_rate:
+            resampler = T.Resample(sample_rate, resample_rate)
+            audio_time_series = resampler(audio_time_series)
+            sample_rate = resample_rate
+        
+        audio = audio_time_series.reshape(-1)
+
+        if duration*sample_rate >= audio.shape[0]:
+            repeat_factor = int(np.ceil((duration*sample_rate) / audio.shape[0]))
+            audio = audio.repeat(repeat_factor)
+            audio = audio[0: duration*sample_rate]
+        else:
+            start_index = random.randrange(audio.shape[0] - duration*sample_rate)
+            audio = audio[start_index:start_index + duration*sample_rate]
+        tensor = torch.tensor(audio, dtype=torch.float32).reshape(-1)
+        return tensor
+
     def _tokenize_text(self, text):
         if 'gpt' in self.model.args.text_model:
             text = text + ' <|endoftext|>' 
@@ -93,6 +119,16 @@ class MS_CLAP_2023(BASE_CLAP):
             full_embs.append(global_emb)
         
         return full_embs, clip_embs
+    
+    def get_audio_embs_simple(self, files):
+        batch_size = self.batch_size
+        all_embs = []
+        for i in range(0, len(files), batch_size):
+            batch_files = files[i: i+batch_size]
+            batch_embs = self.model.get_audio_embeddings(batch_files).cpu()
+            all_embs.append(batch_embs)
+        all_embs = torch.cat(all_embs, dim=0)
+        return all_embs
 
 
 class MS_CLAP_2022(MS_CLAP_2023):
@@ -189,6 +225,23 @@ class M2D_CLAP(MS_CLAP_2022):
             all_embs = torch.cat(all_embs, dim=0)
         return all_embs
 
+    def get_audio_embs_simple(self, files):
+        batch_size = self.batch_size
+        all_embs = []
+
+        tensors = [self.load_audio(file) for file in files]        
+        tensors = torch.stack(tensors, dim=0)
+
+        with torch.no_grad():
+            for i in range(0, len(files), batch_size):
+                batch_tensors = tensors[i: i+batch_size].to(self.device)
+                batch_tensors = batch_tensors.reshape(batch_tensors.shape[0], 1, batch_tensors.shape[1])
+                batch_embs = self.model.encode_clap_audio(batch_tensors).cpu()
+                all_embs.append(batch_embs)
+            all_embs = torch.cat(all_embs, dim=0)
+        return all_embs
+
+
 
 class LAION_CLAP(M2D_CLAP):
     def __init__(self, batch_size=128):
@@ -244,6 +297,23 @@ class LAION_CLAP(M2D_CLAP):
         with torch.no_grad():
             for i in range(0, len(texts), batch_size):
                 batch_embs = self.model.get_text_embedding(texts[i: i+batch_size])
+                all_embs.append(torch.tensor(batch_embs).float())
+            all_embs = torch.cat(all_embs, dim=0)
+        return all_embs
+
+    def get_audio_embs_simple(self, files):
+        batch_size = self.batch_size
+        
+        tensors = [self.load_audio(file) for file in files]        
+        tensors = torch.stack(tensors, dim=0)
+
+        all_embs = []
+        with torch.no_grad():
+            for i in range(0, len(files), batch_size):
+                batch_tensors = tensors[i: i+batch_size]
+                batch_tensors = torch.from_numpy(self.int16_to_float32(self.float32_to_int16(batch_tensors.numpy()))).float()
+                batch_tensors = batch_tensors.to(self.device)
+                batch_embs = self.model.get_audio_embedding_from_data(x=batch_tensors, use_tensor=True)
                 all_embs.append(torch.tensor(batch_embs).float())
             all_embs = torch.cat(all_embs, dim=0)
         return all_embs
