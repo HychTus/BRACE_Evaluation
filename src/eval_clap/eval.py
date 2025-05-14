@@ -30,7 +30,6 @@ def parse_args():
 def setup_experiment(args):
     log_level = logging.DEBUG if args.debug else logging.INFO
     
-    # task_name 中仅包含 dataset_name 和 model_name
     args.dataset_name = args.meta_path.split('/')[-1].split('.')[0]
     args.task_name = f'{args.dataset_name}_{args.model_name}'
 
@@ -88,7 +87,6 @@ def main():
     audios = [item['audio_path'] for item in dataset]
     answers = [item['answer'] for item in dataset] # item['answer']: int
 
-    # NOTE: model.score 返回的 score 类型是 numpy.ndarray
     scores_0 = model.score(captions_0, audios)
     scores_1 = model.score(captions_1, audios)
 
@@ -102,7 +100,6 @@ def main():
         dst_scores = scores_1
     predictions = np.where(src_scores > dst_scores, 0, 1)
 
-    # NOTE: 简单计算整体的 accuracy 和 f1-score，详细的计算在 calc.py
     # Calculate accuracy
     accuracy = np.mean(predictions == answers)
     logging.info(f'Accuracy: {accuracy * 100:.4f}')
@@ -110,10 +107,8 @@ def main():
     f1 = f1_score(answers, predictions, average='binary')
     logging.info(f'F1-score: {f1 * 100:.4f}')
 
-    # 将 audio score 和 ref score 都进行保存
     result = []
     for index, item in enumerate(dataset):
-        # FIXME: 需要从 np.int64/np.float32 转换为 int/float 后 json 才能序列化
         item['src_score'] = float(src_scores[index])
         item['dst_score'] = float(dst_scores[index])
         item['score_0'] = float(scores_0[index])
@@ -135,5 +130,4 @@ def main():
 
 
 if __name__ == '__main__':
-    for i in range(100):
-        main()
+    main()

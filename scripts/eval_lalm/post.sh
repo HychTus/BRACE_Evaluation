@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODEL_NAME="Qwen2.5-14B-Instruct"
+MODEL_NAME="Qwen/Qwen2.5-14B-Instruct"
 LOG_PATH="logs"
 TARGET=$1
 

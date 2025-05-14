@@ -4,4 +4,12 @@
 
 ## CLAP
 
+### Prerequisites
+
+### Running
+
 ## LALM
+
+### Prerequisites
+
+### Running

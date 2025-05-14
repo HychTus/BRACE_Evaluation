@@ -162,55 +162,5 @@ def main():
     Hallu_df.to_csv(os.path.join(args.log_dir, 'Hallu_result.csv'), index=False)
 
 
-def process():
-    import numpy as np
-    process_dir = "/mnt/public/data/lh/chy/BRACE_Eval/final_res/CLAP"
-    # process_dir = "/mnt/public/data/lh/chy/BRACE_Eval/final_res/test"
-    json_files = [f for f in os.listdir(process_dir) if f.endswith('.json')]
-
-
-    for json_file in json_files:
-        json_path = os.path.join(process_dir, json_file)
-        with open(json_path, 'r') as f:
-            result = json.load(f)
-
-        logging.info(f'Processing file: {json_path}')
-
-        # test_item = result[0]
-        # print(test_item['ref_score_0'])
-        # print(type(test_item['ref_score_0']))
-        # print(max(test_item['ref_score_0'][:2]), max(test_item['ref_score_0'][:5]))
-        # print(test_item['ref_score_0'][4], type(test_item['ref_score_0'][4]))
-
-        for item in result:
-            # pop 会删除原有的 key
-            score_0, score_1 = item['score_0'], item['score_1'] # audio score
-            src_score, dst_score = item.pop('src_score'), item.pop('dst_score')
-            ref_score_0, ref_score_1 = item['ref_score_0'], item['ref_score_1']
-
-            ref_score_0 = np.array(ref_score_0)
-            ref_score_1 = np.array(ref_score_1)
-
-            prediction_dict, score0_dict, score1_dict = {}, {}, {}
-            for num in [0, 1, 2, 3, 4, 5]:
-                key = f'{str(num)}_ref'
-                score0_dict[key] = (score_0 + np.nanmax(ref_score_0[:num])) / 2 if num > 0 else score_0
-                score1_dict[key] = (score_1 + np.nanmax(ref_score_1[:num])) / 2 if num > 0 else score_1
-                prediction_dict[key] = '0' if score0_dict[key] > score1_dict[key] else '1'
-
-            item.update({
-                'audio_score_0': score_0,
-                'audio_score_1': score_1,
-                'prediction': prediction_dict,
-                'score_0': score0_dict,
-                'score_1': score1_dict,
-            })
-        
-        new_json_path = json_path
-        with open(new_json_path, 'w') as f:
-            json.dump(result, f, indent=4)
-
-
 if __name__ == '__main__':
     main()
-    # process()
