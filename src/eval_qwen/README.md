@@ -20,6 +20,8 @@ Ensure that the models are in the proper directory, and you can specify the mode
 
 ## Data Preparation
 The code uses datasets like AudioCaps and Clotho, which should be structured as follows:
+
+```
 brace_folder_path/
     ├── benchmark/
     │   ├── AudioCaps/
@@ -36,7 +38,7 @@ brace_folder_path/
     │   │   │   └── ...
     ├── benchmark_hallucination/
     │   └── same structure as benchmark...
-
+```
 
 ## Running the Code
 The script processes the datasets and performs inference using the specified models and prompts. The inference can be run on two tasks: `main` and `hallucination`.
