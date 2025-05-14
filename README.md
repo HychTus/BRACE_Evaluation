@@ -1,11 +1,12 @@
 # BRACE Evaluation
 
-## 📦 BRACE Benchmark
-
+## BRACE Benchmark
 You can download the **BRACE** benchmark dataset (including metadata and raw audio) from:
-👉 [https://huggingface.co/datasets/gtysssp/audio\_benchmarks](https://huggingface.co/datasets/gtysssp/audio_benchmarks)
+[https://huggingface.co/datasets/gtysssp/audio\_benchmarks](https://huggingface.co/datasets/gtysssp/audio_benchmarks)
 
 To make it easier to work with, you can process the metadata using `src/data.py`, which returns a PyTorch-compatible `Dataset` class.
+**Note:** You may need to adjust the directory structure and filenames of the downloaded benchmark to ensure compatibility with the evaluation scripts.
+
 
 ### BRACE-Main Metadata Format
 
@@ -75,7 +76,7 @@ For use during training or evaluation:
 
 ---
 
-## 🎯 CLAP Evaluation
+## CLAP Evaluation
 
 ### Prerequisites
 
@@ -107,7 +108,7 @@ Optional parameters like the number of references can be adjusted in `./scripts/
 
 ---
 
-## 💬 LALM Evaluation
+## LALM Evaluation
 
 ### Prerequisites
 
@@ -137,8 +138,6 @@ Use this script (modify if needed for benchmark compatibility):
 * `PROMPT`: Prompt template — see `src/eval_lalm/prompt.py`
 
 You can modify parameters like the number of references in `pre.sh`.
-
-### Output Format
 
 Inference results are saved in the `logs` directory. Each JSON result should follow this format:
 
